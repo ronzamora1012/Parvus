@@ -75,9 +75,12 @@ Drawing.Fonts = Drawing.Fonts or {
 
 -- Fallback for new Drawing objects (if executor lacks)
 local OldDrawingNew = Drawing.new
-Drawing.new = function(class)
-    local success, obj = pcall(function() return OldDrawingNew(class) end)
-    if success and obj then return obj end
+Drawing.new = function(class, ...)
+    local success, obj = pcall(function() return OldDrawingNew(class, ...) end)
+    if success and obj then
+        return obj
+    end
+
     -- return dummy object to avoid crashes
     return setmetatable({
         Visible = false,
@@ -90,9 +93,21 @@ Drawing.new = function(class)
         Outline = false,
         Center = false,
         Thickness = 1,
-        Filled = false
-    }, {__index = function() return function() end end})
+        Filled = false,
+        TextBounds = Vector2.new(0, 0) -- add TextBounds for text objects
+    }, { __index = function() return function() end end })
 end
+
+-- PATCH: ensure all text objects have safe TextBounds
+local old_Drawing_new2 = Drawing.new
+Drawing.new = function(class, ...)
+    local obj = old_Drawing_new2(class, ...)
+    if class == "Text" then
+        obj.TextBounds = obj.TextBounds or Vector2.new(0, 0)
+    end
+    return obj
+end
+
 
 
 local function AddDrawing(Type, Properties)
@@ -1885,4 +1900,5 @@ end)
 end)]]
 
 return DrawingLibrary
+
 
