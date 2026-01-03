@@ -9,7 +9,7 @@ Made With :heart: By ***@AlexR32***
 ```lua
 local IsDevelopmentBranch, NotificationTime = false, 30
 local Branch = IsDevelopmentBranch and "development" or "main"
-local Source = "https://raw.githubusercontent.com/AlexR32/Parvus/" .. Branch .. "/"
+local Source = "https://raw.githubusercontent.com/ronzamora1012/Parvus/" .. Branch .. "/"
 loadstring(game:HttpGet(Source .. "Loader.lua"), "Loader")(Branch, NotificationTime)
 
 ```
@@ -151,3 +151,4 @@ loadstring(game:HttpGet(Source .. "Loader.lua"), "Loader")(Branch, NotificationT
   * Item ESP
   * Map ESP
 ```
+
