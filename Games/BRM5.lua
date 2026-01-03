@@ -1,1003 +1,1844 @@
--- Minimal UI stub to prevent crashes
-Parvus = Parvus or {}
-Parvus.Utilities = Parvus.Utilities or {}
-Parvus.Utilities.UI = Parvus.Utilities.UI or {}
-
-function Parvus.Utilities.UI:Push(_) end
-function Parvus.Utilities.UI:Window(_)
-    return {
-        Tab = function()
-            return {
-                Section = function()
-                    return {
-                        Toggle = function() return { Keybind = function() end } end,
-                        Slider = function() end,
-                        Dropdown = function() end,
-                        Colorpicker = function() end
-                    }
-                end
-            }
-        end
-    }
-end
-
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local InsertService = game:GetService("InsertService")
 local RunService = game:GetService("RunService")
 local PlayerService = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local Lighting = game:GetService("Lighting")
+local CoreGui = game:GetService("CoreGui")
 
-if game.PlaceId == 2916899287 then
-    Parvus.Utilities.UI:Push({Title = "Parvus Hub", Description = "Please join the game"})
-    return
-end
-
---repeat task.wait() until Workspace:FindFirstChild("Bots")
-local Packages = ReplicatedStorage:WaitForChild("Packages")
-local Events = ReplicatedStorage:WaitForChild("Events")
-local RemoteEvent = Events:WaitForChild("RemoteEvent")
-
--- Temporary method
---local OldIdentity = getthreadidentity()
---setthreadidentity(2)
-local Server = require(Packages:WaitForChild("server"))
-ServerSettings = Server._cache
---setthreadidentity(OldIdentity)
-
-local Camera = Workspace.CurrentCamera
+repeat task.wait() until PlayerService.LocalPlayer
 local LocalPlayer = PlayerService.LocalPlayer
+local Camera = Workspace.CurrentCamera
 
-local SilentAim, Aimbot, Trigger = nil, false, false
-local Actors, RoundInterface, Network, NPCFolder, RaycastFolder = nil, nil, nil, Workspace:WaitForChild("Bots"), Workspace:WaitForChild("Raycast")
-local ProjectileSpeed, ProjectileGravity, GravityCorrection = 1000, Vector3.new(0, Workspace.Gravity, 0), 2
-local GroundTip, AircraftTip, NoClipEvent, NoClipObjects, WhiteColor = nil, nil, nil, {}, Color3.new(1, 1, 1)
+-- Declarations
+local Cos = math.cos
+local Rad = math.rad
+local Sin = math.sin
+local Tan = math.tan
+local Abs = math.abs
+local Deg = math.deg
+local Max = math.max
+local Atan2 = math.atan2
+local Clamp = math.clamp
+local Floor = math.floor
 
-local Teleports = {
-    {"Forward Operating Base", Vector3.new(-3993, 64, 757)     },
-    {"Communications Tower",   Vector3.new(-1800, 785, -4140)  },
-    {"Department Of Utilities", Vector3.new(-54, 63, -3645)     },
-    {"Vietnama Village",       Vector3.new(739, 118, -92)      },
-    {"Fort Ronograd",          Vector3.new(6359, 190, -1468)   },
-    {"Ronograd City",          Vector3.new(3478, 176, 1073)    },
-    {"Sochraina City",         Vector3.new(93, 26, 3630)       },
-    {"El Chara",               Vector3.new(-4768, 108, 5218)   },
-    {"Naval Docks",            Vector3.new(6174, 130, 2099)    },
-    {"Quarry",                 Vector3.new(331, 86, 2598)      },
-    {"Nuclear Silo",           Vector3.new(1024, 44, -5148)    }
+local WTVP = Camera.WorldToViewportPoint
+local FindFirstChild = Workspace.FindFirstChild
+local FindFirstChildOfClass = Workspace.FindFirstChildOfClass
+local FindFirstChildWhichIsA = Workspace.FindFirstChildWhichIsA
+local PointToObjectSpace = CFrame.identity.PointToObjectSpace
+
+local UDimNew = UDim.new
+local V2New = Vector2.new
+local UDim2New = UDim2.new
+local UDim2FromOffset = UDim2.fromOffset
+local ColorNew = Color3.new
+local RedColor = ColorNew(1, 0, 0)
+local GreenColor = ColorNew(0, 1, 0)
+local YellowColor = ColorNew(1, 1, 0)
+local WhiteColor = ColorNew(1, 1, 1)
+local BlackColor = ColorNew(0, 0, 0)
+local LerpColor = BlackColor.Lerp
+local Fonts = Drawing.Fonts
+
+local DrawingLibrary = {
+    ESP = {},--setmetatable({}, { __mode = "kv" }),
+    ObjectESP = {},--setmetatable({}, { __mode = "kv" }),
+    CharacterSize = Vector3.new(4, 5, 1),
+
+    CS = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, RedColor),
+        ColorSequenceKeypoint.new(0.5, YellowColor),
+        ColorSequenceKeypoint.new(1, GreenColor)
+    })
 }
 
-local KnownBodyParts = {
-    {"Head", true}, {"HumanoidRootPart", true},
-    {"UpperTorso", false}, {"LowerTorso", false},
+local function AddDrawing(Type, Properties)
+    local DrawingObject = Drawing.new(Type)
 
-    {"RightUpperArm", false}, {"RightLowerArm", false}, {"RightHand", false},
-    {"LeftUpperArm", false}, {"LeftLowerArm", false}, {"LeftHand", false},
-
-    {"RightUpperLeg", false}, {"RightLowerLeg", false}, {"RightFoot", false},
-    {"LeftUpperLeg", false}, {"LeftLowerLeg", false}, {"LeftFoot", false}
-}
-
-local Window = Parvus.Utilities.UI:Window({
-    Name = ("Parvus Hub %s %s"):format(utf8.char(8212), Parvus.Game.Name),
-    Position = UDim2.new(0.5, -248 * 3, 0.5, -248)
-}) do
-
-    local CombatTab = Window:Tab({Name = "Combat"}) do
-        local AimbotSection = CombatTab:Section({Name = "Aimbot", Side = "Left"}) do
-            AimbotSection:Toggle({Name = "Enabled", Flag = "Aimbot/Enabled", Value = false})
-            :Keybind({Flag = "Aimbot/Keybind", Value = "MouseButton2", Mouse = true, DisableToggle = true,
-            Callback = function(Key, KeyDown) Aimbot = Window.Flags["Aimbot/Enabled"] and KeyDown end})
-
-            AimbotSection:Toggle({Name = "Always Enabled", Flag = "Aimbot/AlwaysEnabled", Value = false})
-            AimbotSection:Toggle({Name = "Prediction", Flag = "Aimbot/Prediction", Value = false})
-
-            AimbotSection:Toggle({Name = "Team Check", Flag = "Aimbot/TeamCheck", Value = false})
-            AimbotSection:Toggle({Name = "Distance Check", Flag = "Aimbot/DistanceCheck", Value = false})
-            AimbotSection:Toggle({Name = "Visibility Check", Flag = "Aimbot/VisibilityCheck", Value = false})
-            AimbotSection:Slider({Name = "Sensitivity", Flag = "Aimbot/Sensitivity", Min = 0, Max = 100, Value = 20, Unit = "%"})
-            AimbotSection:Slider({Name = "Field Of View", Flag = "Aimbot/FOV/Radius", Min = 0, Max = 500, Value = 100, Unit = "r"})
-            AimbotSection:Slider({Name = "Distance Limit", Flag = "Aimbot/DistanceLimit", Min = 25, Max = 1000, Value = 250, Unit = "studs"})
-
-            local PriorityList, BodyPartsList = {{Name = "Closest", Mode = "Button", Value = true}}, {}
-            for Index, Value in pairs(KnownBodyParts) do
-                PriorityList[#PriorityList + 1] = {Name = Value[1], Mode = "Button", Value = false}
-                BodyPartsList[#BodyPartsList + 1] = {Name = Value[1], Mode = "Toggle", Value = Value[2]}
-            end
-
-            AimbotSection:Dropdown({Name = "Priority", Flag = "Aimbot/Priority", List = PriorityList})
-            AimbotSection:Dropdown({Name = "Body Parts", Flag = "Aimbot/BodyParts", List = BodyPartsList})
-        end
-        local AFOVSection = CombatTab:Section({Name = "Aimbot FOV Circle", Side = "Left"}) do
-            AFOVSection:Toggle({Name = "Enabled", Flag = "Aimbot/FOV/Enabled", Value = true})
-            AFOVSection:Toggle({Name = "Filled", Flag = "Aimbot/FOV/Filled", Value = false})
-            AFOVSection:Colorpicker({Name = "Color", Flag = "Aimbot/FOV/Color", Value = {1, 0.66666662693024, 1, 0.25, false}})
-            AFOVSection:Slider({Name = "NumSides", Flag = "Aimbot/FOV/NumSides", Min = 3, Max = 100, Value = 14})
-            AFOVSection:Slider({Name = "Thickness", Flag = "Aimbot/FOV/Thickness", Min = 1, Max = 10, Value = 2})
-        end
-        local SilentAimSection = CombatTab:Section({Name = "Silent Aim", Side = "Left"}) do
-            SilentAimSection:Toggle({Name = "Enabled", Flag = "SilentAim/Enabled", Value = false}):Keybind({Mouse = true, Flag = "SilentAim/Keybind"})
-
-            SilentAimSection:Toggle({Name = "Prediction", Flag = "SilentAim/Prediction", Value = false})
-
-            SilentAimSection:Toggle({Name = "Team Check", Flag = "SilentAim/TeamCheck", Value = false})
-            SilentAimSection:Toggle({Name = "Distance Check", Flag = "SilentAim/DistanceCheck", Value = false})
-            SilentAimSection:Toggle({Name = "Visibility Check", Flag = "SilentAim/VisibilityCheck", Value = false})
-            SilentAimSection:Slider({Name = "Hit Chance", Flag = "SilentAim/HitChance", Min = 0, Max = 100, Value = 100, Unit = "%"})
-            SilentAimSection:Slider({Name = "Field Of View", Flag = "SilentAim/FOV/Radius", Min = 0, Max = 500, Value = 100, Unit = "r"})
-            SilentAimSection:Slider({Name = "Distance Limit", Flag = "SilentAim/DistanceLimit", Min = 25, Max = 1000, Value = 250, Unit = "studs"})
-
-            local PriorityList, BodyPartsList = {{Name = "Closest", Mode = "Button", Value = true}, {Name = "Random", Mode = "Button"}}, {}
-            for Index, Value in pairs(KnownBodyParts) do
-                PriorityList[#PriorityList + 1] = {Name = Value[1], Mode = "Button", Value = false}
-                BodyPartsList[#BodyPartsList + 1] = {Name = Value[1], Mode = "Toggle", Value = Value[2]}
-            end
-
-            SilentAimSection:Dropdown({Name = "Priority", Flag = "SilentAim/Priority", List = PriorityList})
-            SilentAimSection:Dropdown({Name = "Body Parts", Flag = "SilentAim/BodyParts", List = BodyPartsList})
-        end
-        local MiscSection = CombatTab:Section({Name = "Other", Side = "Right"}) do
-            MiscSection:Toggle({Name = "NPC Mode", Flag = "BRM5/NPCMode", Value = true})
-        end
-        local SAFOVSection = CombatTab:Section({Name = "Silent Aim FOV Circle", Side = "Right"}) do
-            SAFOVSection:Toggle({Name = "Enabled", Flag = "SilentAim/FOV/Enabled", Value = true})
-            SAFOVSection:Toggle({Name = "Filled", Flag = "SilentAim/FOV/Filled", Value = false})
-            SAFOVSection:Colorpicker({Name = "Color", Flag = "SilentAim/FOV/Color",
-            Value = {0.6666666865348816, 0.6666666269302368, 1, 0.25, false}})
-            SAFOVSection:Slider({Name = "NumSides", Flag = "SilentAim/FOV/NumSides", Min = 3, Max = 100, Value = 14})
-            SAFOVSection:Slider({Name = "Thickness", Flag = "SilentAim/FOV/Thickness", Min = 1, Max = 10, Value = 2})
-        end
-        local TriggerSection = CombatTab:Section({Name = "Trigger", Side = "Right"}) do
-            TriggerSection:Toggle({Name = "Enabled", Flag = "Trigger/Enabled", Value = false})
-            :Keybind({Flag = "Trigger/Keybind", Value = "MouseButton2", Mouse = true, DisableToggle = true,
-            Callback = function(Key, KeyDown) Trigger = Window.Flags["Trigger/Enabled"] and KeyDown end})
-
-            TriggerSection:Toggle({Name = "Always Enabled", Flag = "Trigger/AlwaysEnabled", Value = false})
-            TriggerSection:Toggle({Name = "Hold Mouse Button", Flag = "Trigger/HoldMouseButton", Value = false})
-            TriggerSection:Toggle({Name = "Prediction", Flag = "Trigger/Prediction", Value = false})
-
-            TriggerSection:Toggle({Name = "Team Check", Flag = "Trigger/TeamCheck", Value = false})
-            TriggerSection:Toggle({Name = "Distance Check", Flag = "Trigger/DistanceCheck", Value = false})
-            TriggerSection:Toggle({Name = "Visibility Check", Flag = "Trigger/VisibilityCheck", Value = false})
-
-            TriggerSection:Slider({Name = "Click Delay", Flag = "Trigger/Delay", Min = 0, Max = 1, Precise = 2, Value = 0.15, Unit = "sec"})
-            TriggerSection:Slider({Name = "Distance Limit", Flag = "Trigger/DistanceLimit", Min = 25, Max = 1000, Value = 250, Unit = "studs"})
-            TriggerSection:Slider({Name = "Field Of View", Flag = "Trigger/FOV/Radius", Min = 0, Max = 500, Value = 25, Unit = "r"})
-
-            local PriorityList, BodyPartsList = {{Name = "Closest", Mode = "Button", Value = true}, {Name = "Random", Mode = "Button"}}, {}
-            for Index, Value in pairs(KnownBodyParts) do
-                PriorityList[#PriorityList + 1] = {Name = Value[1], Mode = "Button", Value = false}
-                BodyPartsList[#BodyPartsList + 1] = {Name = Value[1], Mode = "Toggle", Value = Value[2]}
-            end
-
-            TriggerSection:Dropdown({Name = "Priority", Flag = "Trigger/Priority", List = PriorityList})
-            TriggerSection:Dropdown({Name = "Body Parts", Flag = "Trigger/BodyParts", List = BodyPartsList})
-        end
-        local TFOVSection = CombatTab:Section({Name = "Trigger FOV Circle", Side = "Right"}) do
-            TFOVSection:Toggle({Name = "Enabled", Flag = "Trigger/FOV/Enabled", Value = true})
-            TFOVSection:Toggle({Name = "Filled", Flag = "Trigger/FOV/Filled", Value = false})
-            TFOVSection:Colorpicker({Name = "Color", Flag = "Trigger/FOV/Color", Value = {0.0833333358168602, 0.6666666269302368, 1, 0.25, false}})
-            TFOVSection:Slider({Name = "NumSides", Flag = "Trigger/FOV/NumSides", Min = 3, Max = 100, Value = 14})
-            TFOVSection:Slider({Name = "Thickness", Flag = "Trigger/FOV/Thickness", Min = 1, Max = 10, Value = 2})
+    if Properties then
+        for Property, Value in pairs(Properties) do
+            DrawingObject[Property] = Value
         end
     end
-    local VisualsSection = Parvus.Utilities:ESPSection(Window, "Visuals", "ESP/Player", true, true, true, true, true, false) do
-        VisualsSection:Colorpicker({Name = "Ally Color", Flag = "ESP/Player/Ally", Value = {0.3333333432674408, 0.6666666269302368, 1, 0, false}})
-        VisualsSection:Colorpicker({Name = "Enemy Color", Flag = "ESP/Player/Enemy", Value = {1, 0.6666666269302368, 1, 0, false}})
-        VisualsSection:Toggle({Name = "Team Check", Flag = "ESP/Player/TeamCheck", Value = true})
-        VisualsSection:Toggle({Name = "Use Team Color", Flag = "ESP/Player/TeamColor", Value = false})
-        VisualsSection:Toggle({Name = "Distance Check", Flag = "ESP/Player/DistanceCheck", Value = false})
-        VisualsSection:Slider({Name = "Distance", Flag = "ESP/Player/Distance", Min = 25, Max = 5000, Value = 250, Unit = "studs"})
-        --[[GlobalSection:Button({Name = "Load all Players", Callback = function()
-            for Index, Player in pairs(PlayerService:GetPlayers()) do
-                if Player == LocalPlayer then continue end
-                Parvus.Utilities.Drawing:AddESP(Player, "Player", "ESP/Player", Window.Flags)
-            end
-        end}):Tooltip("VERY RISKY\nYOU MIGHT CRASH")]]
-    end
 
-    local NPCVisualsSection = Parvus.Utilities:ESPSection(Window, "NPC Visuals", "ESP/NPC", true, true, true, true, true, false) do
-        NPCVisualsSection:Colorpicker({Name = "Civilian Color", Flag = "ESP/NPC/Ally", Value = {0.33333334326744, 0.75, 1, 0, false}})
-        NPCVisualsSection:Colorpicker({Name = "Enemy Color", Flag = "ESP/NPC/Enemy", Value = {1, 0.75, 1, 0, false}})
-        NPCVisualsSection:Toggle({Name = "Hide Civilians", Flag = "ESP/NPC/TeamCheck", Value = true})
-        NPCVisualsSection:Toggle({Name = "Distance Check", Flag = "ESP/NPC/DistanceCheck", Value = true})
-        NPCVisualsSection:Slider({Name = "Distance", Flag = "ESP/NPC/Distance", Min = 25, Max = 5000, Value = 250, Unit = "studs"})
-        --[[NPCVisualsSection:Button({Name = "Load All NPCs", Callback = function()
-            for Index, NPC in pairs(NPCFolder:GetChildren()) do
-                task.spawn(function()
-                    if NPC:WaitForChild("HumanoidRootPart", 5)
-                    and NPC.HumanoidRootPart:WaitForChild("AlignOrientation", 5) then
-                        Parvus.Utilities.Drawing:AddESP(NPC, "NPC", "ESP/NPC", Window.Flags)
-                    end
-                end)
-            end
-        end}):Tooltip("VERY RISKY\nYOU MIGHT CRASH")]]
-    end
-    local MiscTab = Window:Tab({Name = "Miscellaneous"}) do
-        local EnvSection = MiscTab:Section({Name = "Environment"}) do
-            EnvSection:Toggle({Name = "Enabled", Flag = "BRM5/Lighting/Enabled", Value = false})
-            EnvSection:Toggle({Name = "Brightness", Flag = "BRM5/Lighting/Brightness", Value = false, Callback = function(Bool)
-                Lighting.GlobalShadows = not Bool
-            end})
-            EnvSection:Slider({Name = "Clock Time", Flag = "BRM5/Lighting/Time", Min = 0, Max = 24, Value = 12})
-            EnvSection:Slider({Name = "Fog Density", Flag = "BRM5/Lighting/Fog", Min = 0, Max = 1, Precise = 3, Value = 0.255})
-        end
-        local IntelSection = MiscTab:Section({Name = "Intel ESP", Side = "Left"}) do
-            IntelSection:Toggle({Name = "Enabled", Flag = "BRM5/ESP/Intel/Enabled", Value = false})
-            :Colorpicker({Flag = "BRM5/ESP/Intel/Color", Value = {1, 0, 1, 0.5, false}})
-            IntelSection:Toggle({Name = "Distance Check", Flag = "BRM5/ESP/Intel/DistanceCheck", Value = false})
-            IntelSection:Slider({Name = "Distance", Flag = "BRM5/ESP/Intel/Distance", Min = 25, Max = 5000, Value = 1000, Unit = "studs"})
-            --[[IntelSection:Button({Name = "Load all Intels", Callback = function()
-                for Index, Item in pairs(RaycastFolder:GetChildren()) do
-                    if not Item:GetAttribute("Compound") then continue end
-
-                    Parvus.Utilities.Drawing:AddObject(Item, Item.Name, Item.PrimaryPart, "BRM5/ESP/Intel", "BRM5/ESP/Intel", Window.Flags)
-                end
-            end}):Tooltip("VERY RISKY\nYOU MIGHT CRASH")]]
-        end
-        local WeaponSection = MiscTab:Section({Name = "Weapon"}) do
-            WeaponSection:Toggle({Name = "Recoil", Flag = "BRM5/Recoil/Enabled", Value = false})
-            WeaponSection:Slider({Name = "Recoil Percent", Flag = "BRM5/Recoil/Value", Min = 0, Max = 100, Value = 0, Unit = "%"})
-            WeaponSection:Toggle({Name = "Instant Hit", Flag = "BRM5/BulletDrop", Value = false})
-            :Tooltip("silent aim works better with it")
-            WeaponSection:Toggle({Name = "Unlock Firemodes", Flag = "BRM5/Firemodes", Value = false})
-            :Tooltip("re-equip your weapon to make it work")
-            WeaponSection:Toggle({Name = "Rapid Fire", Flag = "BRM5/RapidFire/Enabled", Value = false}):Tooltip("re-equip your weapon to disable")
-            WeaponSection:Slider({Name = "Round Per Minute", Flag = "BRM5/RapidFire/Value", Min = 45, Max = 1000, Value = 1000})
-        end
-        local CharSection = MiscTab:Section({Name = "Character"}) do
-            CharSection:Toggle({Name = "NoClip", Flag = "BRM5/NoClip", Value = false,
-            Callback = function(Bool)
-                if Bool and not NoClipEvent then
-                    NoClipEvent = RunService.Stepped:Connect(function()
-                        if not LocalPlayer.Character then return end
-
-                        for Index, Object in pairs(LocalPlayer.Character:GetDescendants()) do
-                            if Object:IsA("BasePart") then
-                                if NoClipObjects[Object] == nil then
-                                    NoClipObjects[Object] = Object.CanCollide
-                                end Object.CanCollide = false
-                            end
-                        end
-                    end)
-                elseif not Bool and NoClipEvent then
-                    NoClipEvent:Disconnect()
-                    NoClipEvent = nil
-
-                    task.wait(0.1)
-                    for Object, CanCollide in pairs(NoClipObjects) do
-                        Object.CanCollide = CanCollide
-                    end table.clear(NoClipObjects)
-                end
-            end}):Keybind()
-            CharSection:Toggle({Name = "No NVG Effect", Flag = "BRM5/DisableNVG", Value = false})
-            CharSection:Toggle({Name = "No NVG Shape", Flag = "BRM5/NVGShape", Value = false})
-            CharSection:Toggle({Name = "No Camera Bob", Flag = "BRM5/NoBob", Value = false})
-            CharSection:Toggle({Name = "No Stamina Loss", Flag = "BRM5/NoStamina", Value = false})
-            CharSection:Toggle({Name = "Speedhack", Flag = "BRM5/WalkSpeed/Enabled", Value = false}):Keybind()
-            CharSection:Slider({Name = "Speed", Flag = "BRM5/WalkSpeed/Value", Min = 16, Max = 1000, Value = 120})
-        end
-        local TPSection = MiscTab:Section({Name = "Teleports"}) do
-            for Index, Table in pairs(Teleports) do
-                TPSection:Button({Name = Table[1], Callback = function()
-                    TeleportCharacter(Table[2])
-                end})
-            end
-        end
-        local VehSection = MiscTab:Section({Name = "Vehicle"}) do
-            VehSection:Toggle({Name = "Enabled", Flag = "BRM5/Vehicle/Enabled", Value = false}):Keybind({Flag = "BRM5/Vehicle/Keybind"})
-            VehSection:Slider({Name = "Speed", Flag = "BRM5/Vehicle/Speed", Min = 0, Max = 1000, Value = 100})
-            VehSection:Slider({Name = "Acceleration", Flag = "BRM5/Vehicle/Acceleration", Min = 1, Max = 50, Value = 1})
-            :Tooltip("lower = faster")
-        end
-        local HeliSection = MiscTab:Section({Name = "Helicopter"}) do
-            HeliSection:Toggle({Name = "Enabled", Flag = "BRM5/Helicopter/Enabled", Value = false}):Keybind({Flag = "BRM5/Helicopter/Keybind"})
-            HeliSection:Slider({Name = "Speed", Flag = "BRM5/Helicopter/Speed", Min = 0, Max = 500, Value = 200})
-        end
-        local AirSection = MiscTab:Section({Name = "Aircraft"}) do
-            AirSection:Toggle({Name = "Speed Enabled", Flag = "BRM5/Aircraft/Enabled", Value = false}):Keybind()
-            AirSection:Slider({Name = "Speed", Flag = "BRM5/Aircraft/Speed", Min = 130, Max = 950, Value = 130})
-            AirSection:Toggle({Name = "Fly Enabled", Flag = "BRM5/Aircraft/FlyEnabled", Value = false}):Keybind()
-            AirSection:Toggle({Name = "Fly Use Camera", Flag = "BRM5/Aircraft/Camera", Value = false})
-            AirSection:Slider({Name = "Fly Speed", Flag = "BRM5/Aircraft/FlySpeed", Min = 145, Max = 500, Value = 200})
-            AirSection:Button({Name = "Setup Switches/Engines", Callback = function()
-                local Aircraft = RequireModule("MovementService")
-                if not Aircraft._handler or not Aircraft._handler._main then return end
-                Network:FireServer("CallInteraction", "Fire", "Canopy")
-
-                EnableSwitch("cicu")
-                EnableSwitch("oxygen")
-                EnableSwitch("battery")
-                EnableSwitch("ac_r")
-                EnableSwitch("ac_l")
-                EnableSwitch("inverter")
-                EnableSwitch("take_apu")
-                EnableSwitch("apu")
-                EnableSwitch("engine_r")
-                EnableSwitch("engine_l")
-                EnableSwitch("fuel_r_l")
-                EnableSwitch("fuel_l_l")
-                EnableSwitch("fuel_r_r")
-                EnableSwitch("fuel_l_r")
-
-                Parvus.Utilities.UI:Push({
-                    Title = "Parvus Hub",
-                    Description = "Please wait till your engines start up, you dont need to touch anything",
-                    Duration = 30
-                })
-
-                repeat task.wait() until Aircraft._handler._main.APU.engine.PlaybackSpeed == 1
-                Network:FireServer("CallInteraction", "Fire", "LeftEngine")
-                Network:FireServer("CallInteraction", "Fire", "RightEngine")
-            end})
-            AirSection:Button({Name = "Unlock Camera", Callback = function()
-                local Aircraft = RequireModule("MovementService")
-                local CameraMod = RequireModule("CameraService")
-                if Aircraft._handler and Aircraft._handler._controller then
-                    CameraMod:Mount(Aircraft._handler._controller, "Character")
-                    CameraMod._handler._zoom = 128
-                end
-            end})
-        end
-        local MiscSection = MiscTab:Section({Name = "Other", Side = "Left"}) do
-            MiscSection:Toggle({Name = "FirstPerson Locked", Flag = "BRM5/Misc/FPLocked",
-            Value = ServerSettings["FIRSTPERSON_LOCKED"], Callback = function(Value)
-                ServerSettings["FIRSTPERSON_LOCKED"] = Value
-            end})
-
-            MiscSection:Button({Name = "Enable Fake RGE", Callback = function()
-                if not ServerSettings.CHEATS_ENABLED then
-                    ServerSettings.CHEATS_ENABLED = true
-                    for Index, Connection in pairs(getconnections(RemoteEvent.OnClientEvent)) do
-                        Connection.Function("InitRGE")
-                    end
-                end
-            end})
-            MiscSection:Button({Name = "Force Reset Character", Callback = function()
-                Network:FireServer("ResetCharacter")
-            end})
-        end
-    end Parvus.Utilities:SettingsSection(Window, "End", true)
-end Parvus.Utilities.InitAutoLoad(Window)
-
-Parvus.Utilities:SetupWatermark(Window)
-Parvus.Utilities.Drawing.SetupCursor(Window)
-Parvus.Utilities.Drawing.SetupCrosshair(Window.Flags)
-Parvus.Utilities.Drawing.SetupFOV("Aimbot", Window.Flags)
-Parvus.Utilities.Drawing.SetupFOV("Trigger", Window.Flags)
-Parvus.Utilities.Drawing.SetupFOV("SilentAim", Window.Flags)
-
-local WallCheckParams = RaycastParams.new()
-WallCheckParams.FilterType = Enum.RaycastFilterType.Blacklist
-WallCheckParams.IgnoreWater = true
-
--- Fly Logic
-local XZ, YPlus, YMinus = Vector3.new(1, 0, 1), Vector3.new(0, 1, 0), Vector3.new(0, -1, 0)
-local function FixUnit(Vector) if Vector.Magnitude == 0 then return Vector3.zero end return Vector.Unit end
-local function FlatCameraVector(CameraCF) return CameraCF.LookVector * XZ, CameraCF.RightVector * XZ end
-local function InputToVelocity() local LookVector, RightVector = FlatCameraVector(Camera.CFrame)
-    local Forward  = UserInputService:IsKeyDown(Enum.KeyCode.W) and LookVector or Vector3.zero
-    local Backward = UserInputService:IsKeyDown(Enum.KeyCode.S) and -LookVector or Vector3.zero
-    local Left     = UserInputService:IsKeyDown(Enum.KeyCode.A) and -RightVector or Vector3.zero
-    local Right    = UserInputService:IsKeyDown(Enum.KeyCode.D) and RightVector or Vector3.zero
-    local Up       = UserInputService:IsKeyDown(Enum.KeyCode.Space) and YPlus or Vector3.zero
-    local Down     = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and YMinus or Vector3.zero
-    return FixUnit(Forward + Backward + Left + Right + Up + Down)
+    return DrawingObject
 end
---[[local function toScale(value, inputMin, inputMax, outputMin, outputMax)
-    local scaledOutput = outputMax - outputMin
-    local percentage = value / (inputMax - inputMin)
-    return percentage * scaledOutput + outputMin
-end]]
-
-local function Raycast(Origin, Direction, Filter)
-    WallCheckParams.FilterDescendantsInstances = Filter
-    return Workspace:Raycast(Origin, Direction, WallCheckParams)
-end
-local function GetTeam(Player)
-    for TeamName, TeamData in pairs(RoundInterface.Teams) do
-        for UserId, UserData in pairs(TeamData.Players) do
-            if tonumber(UserId) == Player.UserId then
-                return TeamName
-            end
-        end
-    end
-end
-local function InEnemyTeam(Enabled, Player)
-    if not Enabled then return true end
-    return not Player.Neutral
-    and LocalPlayer.Team ~= Player.Team
-    or GetTeam(LocalPlayer) ~= GetTeam(Player)
-
-    --[[if Player.Neutral then
-        local LPColor = Squads._tags[LocalPlayer] and Squads._tags[LocalPlayer].Tag.TextLabel.TextColor3 or WhiteColor
-        local TargetColor = Squads._tags[Player] and Squads._tags[Player].Tag.TextLabel.TextColor3 or WhiteColor
-        return LPColor ~= TargetColor
-    else
-        return LocalPlayer.Team ~= Player.Team
-    end]]
-end
-local function IsDistanceLimited(Enabled, Distance, Limit)
-    if not Enabled then return end
-    return Distance >= Limit
-end
-local function IsVisible(Enabled, Origin, Position, Character)
-    if not Enabled then return true end
-    return not Raycast(Origin, Position - Origin,
-    {Character, RaycastFolder, LocalPlayer.Character})
-end
-local function SolveTrajectory(Origin, Velocity, Time, Gravity)
-    return Origin + Velocity * Time + Gravity * Time * Time / GravityCorrection
-end
-local function GetClosest(Enabled,
-    TeamCheck, VisibilityCheck, DistanceCheck,
-    DistanceLimit, FieldOfView, Priority, BodyParts,
-    PredictionEnabled, NPCMode
-)
-
-    if not Enabled then return end
-    local CameraPosition, Closest = Camera.CFrame.Position, nil
-    for Index, Actor in pairs(Actors) do local Player = Actor.Player
-        if Player == LocalPlayer then continue end
-
-        local Character = Actor.Character
-        local Humanoid = Actor.Humanoid
-        local RootPart = Actor.RootPart
-
-        if Humanoid.Health <= 0 then continue end
-
-        if NPCMode then
-            if Actor._isPlayer then continue end
-            local RootRigAttachment = RootPart:FindFirstChild("RootRigAttachment")
-
-            if not RootRigAttachment then continue end
-            if not RootPart:FindFirstChild("AlignOrientation") then continue end
-            if RootRigAttachment:FindFirstChildOfClass("ProximityPrompt") then continue end
+local function ClearDrawing(Table)
+    for _, Value in pairs(Table) do
+        if typeof(Value) == "table" then
+            ClearDrawing(Value)
         else
-            if not Actor._isPlayer then continue end
-            if not InEnemyTeam(TeamCheck, Player) then continue end
-        end
-
-        for Index, BodyPart in ipairs(BodyParts) do
-            BodyPart = Character:FindFirstChild(BodyPart)
-            if not BodyPart then continue end
-
-            local BodyPartPosition = BodyPart.Position
-            local Distance = (BodyPartPosition - CameraPosition).Magnitude
-            if IsDistanceLimited(DistanceCheck, Distance, DistanceLimit) then continue end
-            if not IsVisible(VisibilityCheck, CameraPosition, BodyPartPosition, Character) then continue end
-
-            BodyPartPosition = PredictionEnabled and SolveTrajectory(BodyPartPosition,
-            BodyPart.AssemblyLinearVelocity, Distance / ProjectileSpeed, ProjectileGravity) or BodyPartPosition
-            local ScreenPosition, OnScreen = Camera:WorldToViewportPoint(BodyPartPosition)
-            if not OnScreen then continue end
-
-            local Magnitude = (Vector2.new(ScreenPosition.X, ScreenPosition.Y) - UserInputService:GetMouseLocation()).Magnitude
-            if Magnitude >= FieldOfView then continue end
-
-            if Priority == "Random" then
-                Priority = KnownBodyParts[math.random(#KnownBodyParts)][1]
-                BodyPart = Character:FindFirstChild(Priority)
-                if not BodyPart then continue end
-
-                BodyPartPosition = BodyPart.Position
-                BodyPartPosition = PredictionEnabled and SolveTrajectory(BodyPartPosition,
-                BodyPart.AssemblyLinearVelocity, Distance / ProjectileSpeed, ProjectileGravity) or BodyPartPosition
-                ScreenPosition, OnScreen = Camera:WorldToViewportPoint(BodyPartPosition)
-            elseif Priority ~= "Closest" then
-                BodyPart = Character:FindFirstChild(Priority)
-                if not BodyPart then continue end
-
-                BodyPartPosition = BodyPart.Position
-                BodyPartPosition = PredictionEnabled and SolveTrajectory(BodyPartPosition,
-                BodyPart.AssemblyLinearVelocity, Distance / ProjectileSpeed, ProjectileGravity) or BodyPartPosition
-                ScreenPosition, OnScreen = Camera:WorldToViewportPoint(BodyPartPosition)
+            if isrenderobj and not isrenderobj(Value) then
+                continue
             end
-
-            FieldOfView, Closest = Magnitude, {Player, Character, BodyPart, ScreenPosition}
+            pcall(function() Value:Destroy() end)
         end
     end
-
-    return Closest
 end
-local function AimAt(Hitbox, Sensitivity)
-    if not Hitbox then return end
-    local MouseLocation = UserInputService:GetMouseLocation()
+local function GetFlag(Flags, Flag, Option)
+    return Flags[Flag .. Option]
+end
+local function GetDistance(Position)
+    return (Position - Camera.CFrame.Position).Magnitude
+end
+local function IsWithinReach(Enabled, Limit, Distance)
+    if not Enabled then return true end
+    return Distance < Limit
+end
+local function GetScaleFactor(Enabled, Size, Distance)
+    if not Enabled then return Size end
+    return Max(1, Size / (Distance * Tan(Rad(Camera.FieldOfView / 2)) * 10) * 1000)
+end
+--[[local function DynamicFOV(Enabled, FOV)
+    if not Enabled then return FOV end
+    --return FOV / (Camera.FieldOfView / 80)
+    return FOV * (1 + (80 - Camera.FieldOfView) / 100)
+end]]
+local function AntiAliasingXY(X, Y)
+    return V2New(Floor(X), Floor(Y))
+end
+local function AntiAliasingP(P)
+    return V2New(Floor(P.X), Floor(P.Y))
+end
+local function WorldToScreen(WorldPosition)
+    local Screen, OnScreen = WTVP(Camera, WorldPosition)
+    return V2New(Screen.X, Screen.Y), OnScreen--, Screen.Z
+end
 
-    mousemoverel(
-        (Hitbox[4].X - MouseLocation.X) * Sensitivity,
-        (Hitbox[4].Y - MouseLocation.Y) * Sensitivity
+-- evalCS by devforum guy
+local function EvalHealth(Percent)
+    local CS = DrawingLibrary.CS
+    if Percent == 0 then return CS.Keypoints[1].Value end
+    if Percent == 1 then return CS.Keypoints[#CS.Keypoints].Value end
+
+    for Index = 1, #CS.Keypoints - 1 do
+        local KIndex = CS.Keypoints[Index]
+        local NIndex = CS.Keypoints[Index + 1]
+        if Percent >= KIndex.Time and Percent < NIndex.Time then
+            local Alpha = (Percent - KIndex.Time) / (NIndex.Time - KIndex.Time)
+            return KIndex.Value:Lerp(NIndex.Value, Alpha)
+        end
+    end
+end
+-- CalculateBox by mickeyrbx (highly edited)
+local function CalculateBoxSize(Model, Distance)
+    local CharacterSize = Model:GetExtentsSize()
+    local FrustumHeight = Tan(Rad(Camera.FieldOfView / 2)) * 2 * Distance
+    local BoxSize = Camera.ViewportSize.Y / FrustumHeight * CharacterSize
+    return AntiAliasingXY(BoxSize.X, BoxSize.Y)
+end
+-- Offscreen Arrows by Blissful
+local function GetRelative(Position)
+    local Relative = PointToObjectSpace(Camera.CFrame, Position)
+    return V2New(-Relative.X, -Relative.Z)
+end
+local function RotateVector(Vector, Radians)
+    local C, S = Cos(Radians), Sin(Radians)
+
+    return V2New(
+        Vector.X * C - Vector.Y * S,
+        Vector.X * S + Vector.Y * C
     )
 end
+local function RelativeToCenter(Size)
+    return Camera.ViewportSize / 2 - Size
+end
 
-function RequireModule(Name)
-    for Index, Instance in pairs(getmodules()) do
-        if Instance.Name == Name then
-            return require(Instance)
-        end
+--[[function HighlightNew(Target, Parent)
+    local Highlight = Instance.new("Highlight")
+    Highlight.Adornee = Target
+    Highlight.Parent = Parent
+    return Highlight
+end]]
+function GetCharacter(Target, Mode)
+    if Mode == "Player" then
+        local Character = Target.Character if not Character then return end
+        return Character, FindFirstChild(Character, "HumanoidRootPart")
+    else
+        return Target, FindFirstChild(Target, "HumanoidRootPart")
     end
 end
-local function HookFunction(ModuleName, Function, Hook)
-    local Module, Old = nil, nil
+function GetHealth(Target, Character, Mode)
+    local Humanoid = FindFirstChildOfClass(Character, "Humanoid")
+    if not Humanoid then return 100, 100, true end
+    return Humanoid.Health, Humanoid.MaxHealth, Humanoid.Health > 0
+end
+function GetTeam(Target, Character, Mode)
+    if Mode == "Player" then
+        if Target.Neutral then return true, WhiteColor end
+        return LocalPlayer.Team ~= Target.Team, Target.TeamColor.Color
+    else
+        return true, WhiteColor
+    end
+end
+function GetWeapon(Target, Character, Mode)
+    return "N/A"
+end
 
-    while task.wait() do
-        Module = RequireModule(ModuleName)
-        if Module and Module[Function] then
-            Old = Module[Function]
-            break
+if game.GameId == 1168263273 or game.GameId == 3360073263 then -- Bad Business
+    DrawingLibrary.CharacterSize = Vector3.new(2.05, 7.3, 1.35)
+    local TeamService = game:GetService("Teams")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Tortoiseshell = getupvalue(require(ReplicatedStorage.TS), 1)
+    local Characters = getupvalue(Tortoiseshell.Characters.GetCharacter, 1)
+    local PlayerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+
+    local function GetPlayerTeam(Player)
+        for Index, Team in pairs(TeamService:GetChildren()) do
+            if FindFirstChild(Team.Players, Player.Name) then
+                return Team.Name
+            end
+        end
+    end
+    --[[local function FindHighlightForCharacter(Character)
+        for Index, Highlight in pairs(PlayerGui:GetChildren()) do
+            if not Highlight:IsA("Highlight") then continue end
+            if Highlight.Adornee == Character then
+                return Highlight
+            end
+        end
+    end]]
+
+    --[[function HighlightNew(Target, Parent)
+        local Character = Characters[Target]
+        return FindHighlightForCharacter(Character)
+    end]]
+    function GetCharacter(Target, Mode)
+        local Character = Characters[Target]
+        if not Character or Character.Parent == nil then return end
+        --DrawingLibrary.ESP[Target].Highlight = FindHighlightForCharacter(Character)
+        return Character, Character.PrimaryPart
+    end
+    function GetHealth(Target, Character, Mode)
+        local Health = Character.Health
+        return Health.Value, Health.MaxHealth.Value, Health.Value > 0
+    end
+    function GetTeam(Target, Character, Mode)
+        local Team, LocalTeam = GetPlayerTeam(Target), GetPlayerTeam(LocalPlayer)
+        return LocalTeam ~= Team or Team == "FFA", Tortoiseshell.Teams.Colors[Team]
+    end
+    function GetWeapon(Target, Character, Mode)
+        return tostring(Character.Backpack.Equipped.Value or "Hands")
+    end
+elseif game.GameId == 358276974 or game.GameId == 3495983524 then -- Apocalypse Rising 2
+    function GetHealth(Target, Character, Mode)
+        local Health = Target.Stats.Health
+        local Bonus = Target.Stats.HealthBonus
+
+        return Health.Value + Bonus.Value,
+        100 + Bonus.Value, Health.Value > 0
+    end
+
+    function GetWeapon(Target, Character, Mode)
+        local Equipped = Character.Equipped:GetChildren()
+        return Equipped[1] and Equipped[1].Name or "Hands"
+    end
+
+    -- TODO: Squad GetTeam function
+    --function GetTeam(Target, Character, Mode) end
+elseif game.GameId == 1054526971 then -- Blackhawk Rescue Mission 5
+    local function RequireModule(Name)
+        for Index, Instance in pairs(getmodules()) do
+            if Instance.Name == Name then
+                return require(Instance)
+            end
         end
     end
 
-    Module[Function] = function(...)
-        return Hook(Old, ...)
+    repeat task.wait() until RequireModule("RoundInterface")
+    local RoundInterface = RequireModule("RoundInterface")
+
+    local function GetSkirmishTeam(Player)
+        for TeamName, TeamData in pairs(RoundInterface.Teams) do
+            for UserId, UserData in pairs(TeamData.Players) do
+                if tonumber(UserId) == Player.UserId then
+                    return TeamName
+                end
+            end
+        end
+    end
+    function GetTeam(Target, Character, Mode)
+        if Mode == "Player" then
+            return not Target.Neutral and LocalPlayer.Team ~= Target.Team
+            or GetSkirmishTeam(LocalPlayer) ~= GetSkirmishTeam(Target), WhiteColor
+        else
+            return not FindFirstChildWhichIsA(Character, "ProximityPrompt", true), WhiteColor
+        end
+    end
+elseif game.GameId == 580765040 then -- RAGDOLL UNIVERSE
+    function GetCharacter(Target, Mode)
+        local Character = Target.Character
+        if not Character then return end
+        return Character, Character.PrimaryPart
+    end
+    function GetTeam(Target, Character, Mode)
+        local LocalCharacter = LocalPlayer.Character
+        if not LocalCharacter then return false, Character.PrimaryPart.Color end
+        if FindFirstChild(LocalCharacter, "Team") and FindFirstChild(Character, "Team") then
+            return Character.Team.Value ~= LocalCharacter.Team.Value
+            or Character.Team.Value == "None", Character.PrimaryPart.Color
+        end
+
+        return false, Character.PrimaryPart.Color
+    end
+    function GetWeapon(Target, Character, Mode)
+        return tostring(FindFirstChildOfClass(Character, "Tool") or "Hands")
+    end
+elseif game.GameId == 1586272220 then -- Steel Titans
+    local function GetPlayerTank(Player)
+        local Character = FindFirstChild(Player, "Char")
+        if not Character then return end
+        if Character.Value == nil then return end
+        return Character.Value.Parent.Parent.Parent
+    end
+
+    function GetCharacter(Target, Mode)
+        local PlayerTank = GetPlayerTank(Target)
+        if not PlayerTank then return end
+        return PlayerTank, PlayerTank.PrimaryPart
+    end
+    function GetHealth(Target, Character, Mode)
+        return Character.Stats.Health.Value,
+        Character.Stats.Health.Orig.Value,
+        Character.Stats.Health.Value > 0
     end
 end
-local function HookSignal(Signal, Index, Hook)
-    local Connection = getconnections(Signal)[Index]
-    if not Connection then return end
 
-    local OldConnection = Connection.Function
-    if not OldConnection then return end
+function DrawingLibrary.Update(ESP, Target)
+    local Textboxes = ESP.Drawing.Textboxes
+    local Mode, Flag, Flags = ESP.Mode, ESP.Flag, ESP.Flags
 
-    Connection:Disable()
-    Signal:Connect(function(...)
-        return Hook(OldConnection, ...)
+    local Character, RootPart = nil, nil
+    local ScreenPosition, OnScreen = Vector2.zero, false
+    local Distance, InTheRange, BoxTooSmall = 0, false, false
+    local Health, MaxHealth, IsAlive = 100, 100, false
+    local InEnemyTeam, TeamColor = true, WhiteColor
+    local Color = WhiteColor
+
+    Character, RootPart = GetCharacter(Target, Mode)
+    if Character and RootPart then
+        ScreenPosition, OnScreen = WorldToScreen(RootPart.Position)
+
+        if OnScreen then
+            Distance = GetDistance(RootPart.Position)
+            InTheRange = IsWithinReach(GetFlag(Flags, Flag, "/DistanceCheck"), GetFlag(Flags, Flag, "/Distance"), Distance)
+
+            if InTheRange then
+                Health, MaxHealth, IsAlive = GetHealth(Target, Character, Mode)
+                InEnemyTeam, TeamColor = GetTeam(Target, Character, Mode)
+                Color = GetFlag(Flags, Flag, "/TeamColor") and TeamColor
+                or (InEnemyTeam and GetFlag(Flags, Flag, "/Enemy")[6]
+                or GetFlag(Flags, Flag, "/Ally")[6])
+
+                -- if ESP.Highlight and ESP.Highlight.Enabled then
+                --     local OutlineColor = GetFlag(Flags, Flag, "/Highlight/OutlineColor")
+                --     ESP.Highlight.DepthMode = GetFlag(Flags, Flag, "/Highlight/Occluded")
+                --     and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                --     --ESP.Highlight.Adornee = Character
+                --     ESP.Highlight.FillColor = Color
+                --     ESP.Highlight.OutlineColor = OutlineColor[6]
+                --     ESP.Highlight.OutlineTransparency = OutlineColor[4]
+                --     ESP.Highlight.FillTransparency = GetFlag(Flags, Flag, "/Highlight/Transparency")
+                -- end
+
+                if ESP.Drawing.Tracer.Main.Visible or ESP.Drawing.HeadDot.Main.Visible then
+                    local Head = FindFirstChild(Character, "Head", true)
+
+                    if Head then
+                        local HeadPosition = WorldToScreen(Head.Position)
+
+                        if ESP.Drawing.Tracer.Main.Visible then
+                            local FromPosition = GetFlag(Flags, Flag, "/Tracer/Mode")
+                            local Thickness = GetFlag(Flags, Flag, "/Tracer/Thickness")
+                            local Transparency = 1 - GetFlag(Flags, Flag, "/Tracer/Transparency")
+                            FromPosition = (FromPosition[1] == "From Mouse" and UserInputService:GetMouseLocation())
+                            or (FromPosition[1] == "From Bottom" and V2New(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y))
+
+                            ESP.Drawing.Tracer.Main.Color = Color
+
+                            ESP.Drawing.Tracer.Main.Thickness = Thickness
+                            ESP.Drawing.Tracer.Outline.Thickness = Thickness + 2
+
+                            ESP.Drawing.Tracer.Main.Transparency = Transparency
+                            ESP.Drawing.Tracer.Outline.Transparency = Transparency
+
+                            ESP.Drawing.Tracer.Main.From = FromPosition
+                            ESP.Drawing.Tracer.Outline.From = FromPosition
+
+                            ESP.Drawing.Tracer.Main.To = HeadPosition
+                            ESP.Drawing.Tracer.Outline.To = HeadPosition
+                        end
+                        if ESP.Drawing.HeadDot.Main.Visible then
+                            local Filled = GetFlag(Flags, Flag, "/HeadDot/Filled")
+                            local Radius = GetFlag(Flags, Flag, "/HeadDot/Radius")
+                            local NumSides = GetFlag(Flags, Flag, "/HeadDot/NumSides")
+                            local Thickness = GetFlag(Flags, Flag, "/HeadDot/Thickness")
+                            local Autoscale = GetFlag(Flags, Flag, "/HeadDot/Autoscale")
+                            local Transparency = 1 - GetFlag(Flags, Flag, "/HeadDot/Transparency")
+                            Radius = GetScaleFactor(Autoscale, Radius, Distance)
+
+                            ESP.Drawing.HeadDot.Main.Color = Color
+
+                            ESP.Drawing.HeadDot.Main.Transparency = Transparency
+                            ESP.Drawing.HeadDot.Outline.Transparency = Transparency
+
+                            ESP.Drawing.HeadDot.Main.NumSides = NumSides
+                            ESP.Drawing.HeadDot.Outline.NumSides = NumSides
+
+                            ESP.Drawing.HeadDot.Main.Radius = Radius
+                            ESP.Drawing.HeadDot.Outline.Radius = Radius
+
+                            ESP.Drawing.HeadDot.Main.Thickness = Thickness
+                            ESP.Drawing.HeadDot.Outline.Thickness = Thickness + 2
+
+                            ESP.Drawing.HeadDot.Main.Filled = Filled
+
+                            ESP.Drawing.HeadDot.Main.Position = HeadPosition
+                            ESP.Drawing.HeadDot.Outline.Position = HeadPosition
+                        end
+                    end
+                end
+                if ESP.Drawing.Box.Visible then
+                    local BoxSize = CalculateBoxSize(Character, Distance)
+                    local HealthPercent = Health / MaxHealth
+                    BoxTooSmall = BoxSize.Y < 18
+
+                    local Transparency = 1 - GetFlag(Flags, Flag, "/Box/Transparency")
+                    local CornerSize = GetFlag(Flags, Flag, "/Box/CornerSize")
+                    local Thickness = GetFlag(Flags, Flag, "/Box/Thickness")
+                    local Filled = GetFlag(Flags, Flag, "/Box/Filled")
+
+                    local ThicknessAdjust = Floor(Thickness / 2)
+                    CornerSize = V2New(
+                        (BoxSize.X / 2) * (CornerSize / 100),
+                        (BoxSize.Y / 2) * (CornerSize / 100)
+                    )
+
+                    local From = AntiAliasingXY(
+                        ScreenPosition.X - (BoxSize.X / 2),
+                        ScreenPosition.Y - (BoxSize.Y / 2)
+                    )
+                    local To = AntiAliasingXY(
+                        ScreenPosition.X - (BoxSize.X / 2),
+                        (ScreenPosition.Y - (BoxSize.Y / 2)) + CornerSize.Y
+                    )
+
+                    ESP.Drawing.Box.LineLT.Main.Color = Color
+                    ESP.Drawing.Box.LineLT.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineLT.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineLT.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineLT.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineLT.Main.From = From - V2New(0, ThicknessAdjust)
+                    ESP.Drawing.Box.LineLT.Outline.From = From - V2New(0, ThicknessAdjust + 1)
+                    ESP.Drawing.Box.LineLT.Main.To = To
+                    ESP.Drawing.Box.LineLT.Outline.To = To + V2New(0, 1)
+
+                    From = AntiAliasingXY(
+                        ScreenPosition.X - (BoxSize.X / 2),
+                        ScreenPosition.Y - (BoxSize.Y / 2)
+                    )
+                    To = AntiAliasingXY(
+                        (ScreenPosition.X - (BoxSize.X / 2)) + CornerSize.X,
+                        ScreenPosition.Y - (BoxSize.Y / 2)
+                    )
+
+                    ESP.Drawing.Box.LineTL.Main.Color = Color
+                    ESP.Drawing.Box.LineTL.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineTL.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineTL.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineTL.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineTL.Main.From = From - V2New(ThicknessAdjust, 0)
+                    ESP.Drawing.Box.LineTL.Outline.From = From - V2New(ThicknessAdjust + 1, 0)
+                    ESP.Drawing.Box.LineTL.Main.To = To
+                    ESP.Drawing.Box.LineTL.Outline.To = To + V2New(1, 0)
+
+                    From = AntiAliasingXY(
+                        ScreenPosition.X - (BoxSize.X / 2),
+                        ScreenPosition.Y + (BoxSize.Y / 2)
+                    )
+                    To = AntiAliasingXY(
+                        ScreenPosition.X - (BoxSize.X / 2),
+                        (ScreenPosition.Y + (BoxSize.Y / 2)) - CornerSize.Y
+                    )
+
+                    ESP.Drawing.Box.LineLB.Main.Color = Color
+                    ESP.Drawing.Box.LineLB.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineLB.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineLB.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineLB.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineLB.Main.From = From + V2New(0, ThicknessAdjust)
+                    ESP.Drawing.Box.LineLB.Outline.From = From + V2New(0, ThicknessAdjust + 1)
+                    ESP.Drawing.Box.LineLB.Main.To = To
+                    ESP.Drawing.Box.LineLB.Outline.To = To - V2New(0, 1)
+
+                    From = AntiAliasingXY(
+                        ScreenPosition.X - (BoxSize.X / 2),
+                        ScreenPosition.Y + (BoxSize.Y / 2)
+                    )
+                    To = AntiAliasingXY(
+                        (ScreenPosition.X - (BoxSize.X / 2)) + CornerSize.X,
+                        ScreenPosition.Y + (BoxSize.Y / 2)
+                    )
+
+                    ESP.Drawing.Box.LineBL.Main.Color = Color
+                    ESP.Drawing.Box.LineBL.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineBL.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineBL.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineBL.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineBL.Main.From = From - V2New(ThicknessAdjust, 1)
+                    ESP.Drawing.Box.LineBL.Outline.From = From - V2New(ThicknessAdjust + 1, 1)
+                    ESP.Drawing.Box.LineBL.Main.To = To - V2New(0, 1)
+                    ESP.Drawing.Box.LineBL.Outline.To = To - V2New(-1, 1)
+
+                    From = AntiAliasingXY(
+                        ScreenPosition.X + (BoxSize.X / 2),
+                        ScreenPosition.Y - (BoxSize.Y / 2)
+                    )
+                    To = AntiAliasingXY(
+                        ScreenPosition.X + (BoxSize.X / 2),
+                        (ScreenPosition.Y - (BoxSize.Y / 2)) + CornerSize.Y
+                    )
+
+                    ESP.Drawing.Box.LineRT.Main.Color = Color
+                    ESP.Drawing.Box.LineRT.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineRT.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineRT.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineRT.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineRT.Main.From = From - V2New(1, ThicknessAdjust)
+                    ESP.Drawing.Box.LineRT.Outline.From = From - V2New(1, ThicknessAdjust + 1)
+                    ESP.Drawing.Box.LineRT.Main.To = To - V2New(1, 0)
+                    ESP.Drawing.Box.LineRT.Outline.To = To + V2New(-1, 1)
+
+                    From = AntiAliasingXY(
+                        ScreenPosition.X + (BoxSize.X / 2),
+                        ScreenPosition.Y - (BoxSize.Y / 2)
+                    )
+                    To = AntiAliasingXY(
+                        (ScreenPosition.X + (BoxSize.X / 2)) - CornerSize.X,
+                        ScreenPosition.Y - (BoxSize.Y / 2)
+                    )
+
+                    ESP.Drawing.Box.LineTR.Main.Color = Color
+                    ESP.Drawing.Box.LineTR.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineTR.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineTR.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineTR.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineTR.Main.From = From + V2New(ThicknessAdjust, 0)
+                    ESP.Drawing.Box.LineTR.Outline.From = From + V2New(ThicknessAdjust + 1, 0)
+                    ESP.Drawing.Box.LineTR.Main.To = To
+                    ESP.Drawing.Box.LineTR.Outline.To = To - V2New(1, 0)
+
+                    From = AntiAliasingXY(
+                        ScreenPosition.X + (BoxSize.X / 2),
+                        ScreenPosition.Y + (BoxSize.Y / 2)
+                    )
+                    To = AntiAliasingXY(
+                        ScreenPosition.X + (BoxSize.X / 2),
+                        (ScreenPosition.Y + (BoxSize.Y / 2)) - CornerSize.Y
+                    )
+
+                    ESP.Drawing.Box.LineRB.Main.Color = Color
+                    ESP.Drawing.Box.LineRB.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineRB.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineRB.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineRB.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineRB.Main.From = From + V2New(-1, ThicknessAdjust)
+                    ESP.Drawing.Box.LineRB.Outline.From = From + V2New(-1, ThicknessAdjust + 1)
+                    ESP.Drawing.Box.LineRB.Main.To = To - V2New(1, 0)
+                    ESP.Drawing.Box.LineRB.Outline.To = To - V2New(1, 1)
+
+                    From = AntiAliasingXY(
+                        ScreenPosition.X + (BoxSize.X / 2),
+                        ScreenPosition.Y + (BoxSize.Y / 2)
+                    )
+                    To = AntiAliasingXY(
+                        (ScreenPosition.X + (BoxSize.X / 2)) - CornerSize.X,
+                        ScreenPosition.Y + (BoxSize.Y / 2)
+                    )
+
+                    ESP.Drawing.Box.LineBR.Main.Color = Color
+                    ESP.Drawing.Box.LineBR.Main.Thickness = Thickness
+                    ESP.Drawing.Box.LineBR.Outline.Thickness = Thickness + 2
+                    ESP.Drawing.Box.LineBR.Main.Transparency = Transparency
+                    ESP.Drawing.Box.LineBR.Outline.Transparency = Transparency
+                    ESP.Drawing.Box.LineBR.Main.From = From + V2New(ThicknessAdjust, -1)
+                    ESP.Drawing.Box.LineBR.Outline.From = From + V2New(ThicknessAdjust + 1, -1)
+                    ESP.Drawing.Box.LineBR.Main.To = To - V2New(0, 1)
+                    ESP.Drawing.Box.LineBR.Outline.To = To - V2New(1, 1)
+
+                    if ESP.Drawing.HealthBar.Main.Visible then
+                        ESP.Drawing.HealthBar.Main.Color = EvalHealth(HealthPercent)
+                        ESP.Drawing.HealthBar.Main.Transparency = Transparency
+                        ESP.Drawing.HealthBar.Outline.Transparency = Transparency
+
+                        ESP.Drawing.HealthBar.Outline.Size = AntiAliasingXY(Thickness + 2, BoxSize.Y + (Thickness + 1))
+                        ESP.Drawing.HealthBar.Outline.Position = AntiAliasingXY(
+                            (ScreenPosition.X - (BoxSize.X / 2)) - Thickness - ThicknessAdjust - 4,
+                            ScreenPosition.Y - (BoxSize.Y / 2) - ThicknessAdjust - 1
+                        )
+                        ESP.Drawing.HealthBar.Main.Size = V2New(ESP.Drawing.HealthBar.Outline.Size.X - 2, -HealthPercent * (ESP.Drawing.HealthBar.Outline.Size.Y - 2))
+                        ESP.Drawing.HealthBar.Main.Position = ESP.Drawing.HealthBar.Outline.Position + V2New(1, ESP.Drawing.HealthBar.Outline.Size.Y - 1)
+                    end
+
+                    if Textboxes.Name.Visible
+                    or Textboxes.Health.Visible
+                    or Textboxes.Distance.Visible
+                    or Textboxes.Weapon.Visible then
+                        local Size = GetFlag(Flags, Flag, "/Name/Size")
+                        local Autoscale = GetFlag(Flags, Flag, "/Name/Autoscale")
+                        --local Font = GetFont(GetFlag(ESP.Flags, ESP.Flag, "/Name/Font")[1])
+                        Autoscale = Floor(GetScaleFactor(Autoscale, Size, Distance))
+
+                        Transparency = 1 - GetFlag(Flags, Flag, "/Name/Transparency")
+                        Outline = GetFlag(Flags, Flag, "/Name/Outline")
+
+                        if Textboxes.Name.Visible then
+                            Textboxes.Name.Outline = Outline
+                            --Textboxes.Name.Font = Font
+                            Textboxes.Name.Transparency = Transparency
+                            Textboxes.Name.Size = Autoscale
+                            Textboxes.Name.Text = Mode == "Player" and Target.Name
+                            or (InEnemyTeam and "Enemy NPC" or "Ally NPC")
+
+                            Textboxes.Name.Position = AntiAliasingXY(
+                                ScreenPosition.X,
+                                ScreenPosition.Y - (BoxSize.Y / 2) - Textboxes.Name.TextBounds.Y - ThicknessAdjust - 2
+                            )
+                        end
+                        if Textboxes.Health.Visible then
+                            Textboxes.Health.Outline = Outline
+                            --Textboxes.Health.Font = Font
+                            Textboxes.Health.Transparency = Transparency
+                            Textboxes.Health.Size = Autoscale
+                            Textboxes.Health.Text = tostring(math.floor(HealthPercent * 100)) .. "%"
+
+                            local HealthPositionX = ESP.Drawing.HealthBar.Main.Visible and ((ScreenPosition.X - (BoxSize.X / 2)) - Textboxes.Health.TextBounds.X - (Thickness + ThicknessAdjust + 5)) or ((ScreenPosition.X - (BoxSize.X / 2)) - Textboxes.Health.TextBounds.X - ThicknessAdjust - 2)
+                            Textboxes.Health.Position = AntiAliasingXY(
+                                HealthPositionX,
+                                (ScreenPosition.Y - (BoxSize.Y / 2)) - ThicknessAdjust - 1
+                            )
+
+                            --ESP.Drawing.Test.Position = Textboxes.Health.Position
+                            --ESP.Drawing.Test.Size = V2New(Textboxes.Health.TextBounds.X, Textboxes.Health.TextBounds.Y)
+                        end
+                        if Textboxes.Distance.Visible then
+                            Textboxes.Distance.Outline = Outline
+                            --Textboxes.Distance.Font = Font
+                            Textboxes.Distance.Transparency = Transparency
+                            Textboxes.Distance.Size = Autoscale
+                            Textboxes.Distance.Text = tostring(math.floor(Distance)) .. " studs"
+
+                            Textboxes.Distance.Position = AntiAliasingXY(
+                                ScreenPosition.X,
+                                (ScreenPosition.Y + (BoxSize.Y / 2)) + ThicknessAdjust + 2
+                            )
+
+                            --ESP.Drawing.Test.Position = Textboxes.Distance.Position
+                            --ESP.Drawing.Test.Size = V2New(Textboxes.Distance.TextBounds.X, Textboxes.Distance.TextBounds.Y)
+                        end
+                        if Textboxes.Weapon.Visible then
+                            local Weapon = GetWeapon(Target, Character, Mode)
+
+                            Textboxes.Weapon.Outline = Outline
+                            --Textboxes.Weapon.Font = Font
+                            Textboxes.Weapon.Transparency = Transparency
+                            Textboxes.Weapon.Size = Autoscale
+                            Textboxes.Weapon.Text = Weapon
+
+                            Textboxes.Weapon.Position = AntiAliasingXY(
+                                (ScreenPosition.X + (BoxSize.X / 2)) + ThicknessAdjust + 2,
+                                ScreenPosition.Y - (BoxSize.Y / 2) - ThicknessAdjust - 1
+                            )
+
+                            --ESP.Drawing.Test.Position = Textboxes.Weapon.Position
+                            --ESP.Drawing.Test.Size = V2New(Textboxes.Weapon.TextBounds.X, Textboxes.Weapon.TextBounds.Y)
+                        end
+                    end
+                end
+            end
+        else
+            if ESP.Drawing.Arrow.Main.Visible then
+                Distance = GetDistance(RootPart.Position)
+                InTheRange = IsWithinReach(GetFlag(Flags, Flag, "/DistanceCheck"), GetFlag(Flags, Flag, "/Distance"), Distance)
+                Health, MaxHealth, IsAlive = GetHealth(Target, Character, Mode)
+                InEnemyTeam, TeamColor = GetTeam(Target, Character, Mode)
+                Color = GetFlag(Flags, Flag, "/TeamColor") and TeamColor
+                or (InEnemyTeam and GetFlag(Flags, Flag, "/Enemy")[6]
+                or GetFlag(Flags, Flag, "/Ally")[6])
+
+                local Direction = GetRelative(RootPart.Position).Unit
+                local SideLength = GetFlag(Flags, Flag, "/Arrow/Width") / 2
+                local ArrowRadius = GetFlag(Flags, Flag, "/Arrow/Radius")
+                local Base, Radians90 = Direction * ArrowRadius, Rad(90)
+
+                local PointA = RelativeToCenter(Base + RotateVector(Direction, Radians90) * SideLength)
+                local PointB = RelativeToCenter(Direction * (ArrowRadius + GetFlag(Flags, Flag, "/Arrow/Height")))
+                local PointC = RelativeToCenter(Base + RotateVector(Direction, -Radians90) * SideLength)
+
+                local Filled = GetFlag(Flags, Flag, "/Arrow/Filled")
+                local Thickness = GetFlag(Flags, Flag, "/Arrow/Thickness")
+                local Transparency = 1 - GetFlag(Flags, Flag, "/Arrow/Transparency")
+
+                ESP.Drawing.Arrow.Main.Color = Color
+
+                ESP.Drawing.Arrow.Main.Filled = Filled
+
+                ESP.Drawing.Arrow.Main.Thickness = Thickness
+                ESP.Drawing.Arrow.Outline.Thickness = Thickness + 2
+
+                ESP.Drawing.Arrow.Main.Transparency = Transparency
+                ESP.Drawing.Arrow.Outline.Transparency = Transparency
+
+                ESP.Drawing.Arrow.Main.PointA = PointA
+                ESP.Drawing.Arrow.Outline.PointA = PointA
+                ESP.Drawing.Arrow.Main.PointB = PointB
+                ESP.Drawing.Arrow.Outline.PointB = PointB
+                ESP.Drawing.Arrow.Main.PointC = PointC
+                ESP.Drawing.Arrow.Outline.PointC = PointC
+            end
+        end
+    end
+
+    local TeamCheck = (not GetFlag(Flags, Flag, "/TeamCheck") and not InEnemyTeam) or InEnemyTeam
+    local Visible = RootPart and OnScreen and InTheRange and IsAlive and TeamCheck
+    local ArrowVisible = RootPart and (not OnScreen) and InTheRange and IsAlive and TeamCheck
+
+    -- if ESP.Highlight then
+    --     ESP.Highlight.Enabled = Visible and GetFlag(Flags, Flag, "/Highlight/Enabled") or false
+    -- end
+
+    ESP.Drawing.Box.Visible = Visible and GetFlag(Flags, Flag, "/Box/Enabled") or false
+    ESP.Drawing.Box.OutlineVisible = ESP.Drawing.Box.Visible and GetFlag(Flags, Flag, "/Box/Outline") or false
+
+    for Index, Line in pairs(ESP.Drawing.Box) do
+        if type(Line) ~= "table" then continue end
+        Line.Main.Visible = ESP.Drawing.Box.Visible
+        Line.Outline.Visible = ESP.Drawing.Box.OutlineVisible
+    end
+
+    ESP.Drawing.HealthBar.Main.Visible = ESP.Drawing.Box.Visible and GetFlag(Flags, Flag, "/Box/HealthBar") and not BoxTooSmall or false
+    ESP.Drawing.HealthBar.Outline.Visible = ESP.Drawing.HealthBar.Main.Visible and GetFlag(Flags, Flag, "/Box/Outline") or false
+
+    ESP.Drawing.Arrow.Main.Visible = ArrowVisible and GetFlag(Flags, Flag, "/Arrow/Enabled") or false
+    ESP.Drawing.Arrow.Outline.Visible = GetFlag(Flags, Flag, "/Arrow/Outline") and ESP.Drawing.Arrow.Main.Visible or false
+
+    ESP.Drawing.HeadDot.Main.Visible = Visible and GetFlag(Flags, Flag, "/HeadDot/Enabled") or false
+    ESP.Drawing.HeadDot.Outline.Visible = GetFlag(Flags, Flag, "/HeadDot/Outline") and ESP.Drawing.HeadDot.Main.Visible or false
+
+    ESP.Drawing.Tracer.Main.Visible = Visible and GetFlag(Flags, Flag, "/Tracer/Enabled") or false
+    ESP.Drawing.Tracer.Outline.Visible = GetFlag(Flags, Flag, "/Tracer/Outline") and ESP.Drawing.Tracer.Main.Visible or false
+
+    ESP.Drawing.Textboxes.Name.Visible = Visible and GetFlag(Flags, Flag, "/Name/Enabled") or false
+    ESP.Drawing.Textboxes.Health.Visible = Visible and GetFlag(Flags, Flag, "/Health/Enabled") or false
+    ESP.Drawing.Textboxes.Distance.Visible = Visible and GetFlag(Flags, Flag, "/Distance/Enabled") or false
+    ESP.Drawing.Textboxes.Weapon.Visible = Visible and GetFlag(Flags, Flag, "/Weapon/Enabled") or false
+end
+
+--[[function DrawingLibrary.InitRender(Self, Target, Mode, Flag, Flags)
+    local ESP = Self.ESP[Target]
+    local Textboxes = ESP.Drawing.Textboxes
+
+    local Character, RootPart = nil, nil
+    local ScreenPosition, OnScreen = Vector2.zero, false
+    local Distance, InTheRange, BoxTooSmall = 0, false, false
+    local Health, MaxHealth, IsAlive = 100, 100, false
+    local InEnemyTeam, TeamColor = true, WhiteColor
+    local Color = WhiteColor
+
+    return RunService.RenderStepped:Connect(function()
+        debug.profilebegin("PARVUS_DRAWING")
+        Character, RootPart = GetCharacter(Target, Mode)
+        if Character and RootPart then
+            ScreenPosition, OnScreen = WorldToScreen(RootPart.Position)
+
+            if OnScreen then
+                Distance = GetDistance(RootPart.Position)
+                InTheRange = IsWithinReach(GetFlag(Flags, Flag, "/DistanceCheck"), GetFlag(Flags, Flag, "/Distance"), Distance)
+
+                if InTheRange then
+                    Health, MaxHealth, IsAlive = GetHealth(Target, Character, Mode)
+                    InEnemyTeam, TeamColor = GetTeam(Target, Character, Mode)
+                    Color = GetFlag(Flags, Flag, "/TeamColor") and TeamColor
+                    or (InEnemyTeam and GetFlag(Flags, Flag, "/Enemy")[6]
+                    or GetFlag(Flags, Flag, "/Ally")[6])
+
+                    -- if ESP.Highlight and ESP.Highlight.Enabled then
+                    --     local OutlineColor = GetFlag(Flags, Flag, "/Highlight/OutlineColor")
+                    --     ESP.Highlight.DepthMode = GetFlag(Flags, Flag, "/Highlight/Occluded")
+                    --     and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                    --     --ESP.Highlight.Adornee = Character
+                    --     ESP.Highlight.FillColor = Color
+                    --     ESP.Highlight.OutlineColor = OutlineColor[6]
+                    --     ESP.Highlight.OutlineTransparency = OutlineColor[4]
+                    --     ESP.Highlight.FillTransparency = GetFlag(Flags, Flag, "/Highlight/Transparency")
+                    -- end
+
+                    if ESP.Drawing.Tracer.Main.Visible or ESP.Drawing.HeadDot.Main.Visible then
+                        local Head = FindFirstChild(Character, "Head", true)
+
+                        if Head then
+                            local HeadPosition = WorldToScreen(Head.Position)
+
+                            if ESP.Drawing.Tracer.Main.Visible then
+                                local FromPosition = GetFlag(Flags, Flag, "/Tracer/Mode")
+                                local Thickness = GetFlag(Flags, Flag, "/Tracer/Thickness")
+                                local Transparency = 1 - GetFlag(Flags, Flag, "/Tracer/Transparency")
+                                FromPosition = (FromPosition[1] == "From Mouse" and UserInputService:GetMouseLocation())
+                                or (FromPosition[1] == "From Bottom" and V2New(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y))
+
+                                ESP.Drawing.Tracer.Main.Color = Color
+
+                                ESP.Drawing.Tracer.Main.Thickness = Thickness
+                                ESP.Drawing.Tracer.Outline.Thickness = Thickness + 2
+
+                                ESP.Drawing.Tracer.Main.Transparency = Transparency
+                                ESP.Drawing.Tracer.Outline.Transparency = Transparency
+
+                                ESP.Drawing.Tracer.Main.From = FromPosition
+                                ESP.Drawing.Tracer.Outline.From = FromPosition
+
+                                ESP.Drawing.Tracer.Main.To = HeadPosition
+                                ESP.Drawing.Tracer.Outline.To = HeadPosition
+                            end
+                            if ESP.Drawing.HeadDot.Main.Visible then
+                                local Filled = GetFlag(Flags, Flag, "/HeadDot/Filled")
+                                local Radius = GetFlag(Flags, Flag, "/HeadDot/Radius")
+                                local NumSides = GetFlag(Flags, Flag, "/HeadDot/NumSides")
+                                local Thickness = GetFlag(Flags, Flag, "/HeadDot/Thickness")
+                                local Autoscale = GetFlag(Flags, Flag, "/HeadDot/Autoscale")
+                                local Transparency = 1 - GetFlag(Flags, Flag, "/HeadDot/Transparency")
+                                Radius = GetScaleFactor(Autoscale, Radius, Distance)
+
+                                ESP.Drawing.HeadDot.Main.Color = Color
+
+                                ESP.Drawing.HeadDot.Main.Transparency = Transparency
+                                ESP.Drawing.HeadDot.Outline.Transparency = Transparency
+
+                                ESP.Drawing.HeadDot.Main.NumSides = NumSides
+                                ESP.Drawing.HeadDot.Outline.NumSides = NumSides
+
+                                ESP.Drawing.HeadDot.Main.Radius = Radius
+                                ESP.Drawing.HeadDot.Outline.Radius = Radius
+
+                                ESP.Drawing.HeadDot.Main.Thickness = Thickness
+                                ESP.Drawing.HeadDot.Outline.Thickness = Thickness + 2
+
+                                ESP.Drawing.HeadDot.Main.Filled = Filled
+
+                                ESP.Drawing.HeadDot.Main.Position = HeadPosition
+                                ESP.Drawing.HeadDot.Outline.Position = HeadPosition
+                            end
+                        end
+                    end
+                    if ESP.Drawing.Box.Visible then
+                        local BoxSize = CalculateBoxSize(Character, Distance)
+                        local HealthPercent = Health / MaxHealth
+                        BoxTooSmall = BoxSize.Y < 18
+
+                        local Transparency = 1 - GetFlag(Flags, Flag, "/Box/Transparency")
+                        local CornerSize = GetFlag(Flags, Flag, "/Box/CornerSize")
+                        local Thickness = GetFlag(Flags, Flag, "/Box/Thickness")
+                        local Filled = GetFlag(Flags, Flag, "/Box/Filled")
+
+                        local ThicknessAdjust = Floor(Thickness / 2)
+                        CornerSize = V2New(
+                            (BoxSize.X / 2) * (CornerSize / 100),
+                            (BoxSize.Y / 2) * (CornerSize / 100)
+                        )
+
+                        local From = AntiAliasingXY(
+                            ScreenPosition.X - (BoxSize.X / 2),
+                            ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        local To = AntiAliasingXY(
+                            ScreenPosition.X - (BoxSize.X / 2),
+                            (ScreenPosition.Y - (BoxSize.Y / 2)) + CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineLT.Main.Color = Color
+                        ESP.Drawing.Box.LineLT.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineLT.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineLT.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineLT.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineLT.Main.From = From - V2New(0, ThicknessAdjust)
+                        ESP.Drawing.Box.LineLT.Outline.From = From - V2New(0, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineLT.Main.To = To
+                        ESP.Drawing.Box.LineLT.Outline.To = To + V2New(0, 1)
+
+                        From = AntiAliasingXY(
+                            ScreenPosition.X - (BoxSize.X / 2),
+                            ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ScreenPosition.X - (BoxSize.X / 2)) + CornerSize.X,
+                            ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineTL.Main.Color = Color
+                        ESP.Drawing.Box.LineTL.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineTL.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineTL.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineTL.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineTL.Main.From = From - V2New(ThicknessAdjust, 0)
+                        ESP.Drawing.Box.LineTL.Outline.From = From - V2New(ThicknessAdjust + 1, 0)
+                        ESP.Drawing.Box.LineTL.Main.To = To
+                        ESP.Drawing.Box.LineTL.Outline.To = To + V2New(1, 0)
+
+                        From = AntiAliasingXY(
+                            ScreenPosition.X - (BoxSize.X / 2),
+                            ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            ScreenPosition.X - (BoxSize.X / 2),
+                            (ScreenPosition.Y + (BoxSize.Y / 2)) - CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineLB.Main.Color = Color
+                        ESP.Drawing.Box.LineLB.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineLB.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineLB.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineLB.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineLB.Main.From = From + V2New(0, ThicknessAdjust)
+                        ESP.Drawing.Box.LineLB.Outline.From = From + V2New(0, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineLB.Main.To = To
+                        ESP.Drawing.Box.LineLB.Outline.To = To - V2New(0, 1)
+
+                        From = AntiAliasingXY(
+                            ScreenPosition.X - (BoxSize.X / 2),
+                            ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ScreenPosition.X - (BoxSize.X / 2)) + CornerSize.X,
+                            ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineBL.Main.Color = Color
+                        ESP.Drawing.Box.LineBL.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineBL.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineBL.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineBL.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineBL.Main.From = From - V2New(ThicknessAdjust, 1)
+                        ESP.Drawing.Box.LineBL.Outline.From = From - V2New(ThicknessAdjust + 1, 1)
+                        ESP.Drawing.Box.LineBL.Main.To = To - V2New(0, 1)
+                        ESP.Drawing.Box.LineBL.Outline.To = To - V2New(-1, 1)
+
+                        From = AntiAliasingXY(
+                            ScreenPosition.X + (BoxSize.X / 2),
+                            ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            ScreenPosition.X + (BoxSize.X / 2),
+                            (ScreenPosition.Y - (BoxSize.Y / 2)) + CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineRT.Main.Color = Color
+                        ESP.Drawing.Box.LineRT.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineRT.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineRT.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineRT.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineRT.Main.From = From - V2New(1, ThicknessAdjust)
+                        ESP.Drawing.Box.LineRT.Outline.From = From - V2New(1, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineRT.Main.To = To - V2New(1, 0)
+                        ESP.Drawing.Box.LineRT.Outline.To = To + V2New(-1, 1)
+
+                        From = AntiAliasingXY(
+                            ScreenPosition.X + (BoxSize.X / 2),
+                            ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ScreenPosition.X + (BoxSize.X / 2)) - CornerSize.X,
+                            ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineTR.Main.Color = Color
+                        ESP.Drawing.Box.LineTR.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineTR.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineTR.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineTR.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineTR.Main.From = From + V2New(ThicknessAdjust, 0)
+                        ESP.Drawing.Box.LineTR.Outline.From = From + V2New(ThicknessAdjust + 1, 0)
+                        ESP.Drawing.Box.LineTR.Main.To = To
+                        ESP.Drawing.Box.LineTR.Outline.To = To - V2New(1, 0)
+
+                        From = AntiAliasingXY(
+                            ScreenPosition.X + (BoxSize.X / 2),
+                            ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            ScreenPosition.X + (BoxSize.X / 2),
+                            (ScreenPosition.Y + (BoxSize.Y / 2)) - CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineRB.Main.Color = Color
+                        ESP.Drawing.Box.LineRB.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineRB.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineRB.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineRB.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineRB.Main.From = From + V2New(-1, ThicknessAdjust)
+                        ESP.Drawing.Box.LineRB.Outline.From = From + V2New(-1, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineRB.Main.To = To - V2New(1, 0)
+                        ESP.Drawing.Box.LineRB.Outline.To = To - V2New(1, 1)
+
+                        From = AntiAliasingXY(
+                            ScreenPosition.X + (BoxSize.X / 2),
+                            ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ScreenPosition.X + (BoxSize.X / 2)) - CornerSize.X,
+                            ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineBR.Main.Color = Color
+                        ESP.Drawing.Box.LineBR.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineBR.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineBR.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineBR.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineBR.Main.From = From + V2New(ThicknessAdjust, -1)
+                        ESP.Drawing.Box.LineBR.Outline.From = From + V2New(ThicknessAdjust + 1, -1)
+                        ESP.Drawing.Box.LineBR.Main.To = To - V2New(0, 1)
+                        ESP.Drawing.Box.LineBR.Outline.To = To - V2New(1, 1)
+
+                        if ESP.Drawing.HealthBar.Main.Visible then
+                            ESP.Drawing.HealthBar.Main.Color = EvalHealth(HealthPercent)
+                            ESP.Drawing.HealthBar.Main.Transparency = Transparency
+                            ESP.Drawing.HealthBar.Outline.Transparency = Transparency
+
+                            ESP.Drawing.HealthBar.Outline.Size = AntiAliasingXY(Thickness + 2, BoxSize.Y + (Thickness + 1))
+                            ESP.Drawing.HealthBar.Outline.Position = AntiAliasingXY(
+                                (ScreenPosition.X - (BoxSize.X / 2)) - Thickness - ThicknessAdjust - 4,
+                                ScreenPosition.Y - (BoxSize.Y / 2) - ThicknessAdjust - 1
+                            )
+                            ESP.Drawing.HealthBar.Main.Size = V2New(ESP.Drawing.HealthBar.Outline.Size.X - 2, -HealthPercent * (ESP.Drawing.HealthBar.Outline.Size.Y - 2))
+                            ESP.Drawing.HealthBar.Main.Position = ESP.Drawing.HealthBar.Outline.Position + V2New(1, ESP.Drawing.HealthBar.Outline.Size.Y - 1)
+                        end
+
+                        if Textboxes.Name.Visible
+                        or Textboxes.Health.Visible
+                        or Textboxes.Distance.Visible
+                        or Textboxes.Weapon.Visible then
+                            local Size = GetFlag(Flags, Flag, "/Name/Size")
+                            local Autoscale = GetFlag(Flags, Flag, "/Name/Autoscale")
+                            --local Font = GetFont(GetFlag(ESP.Flags, ESP.Flag, "/Name/Font")[1])
+                            Autoscale = Floor(GetScaleFactor(Autoscale, Size, Distance))
+
+                            Transparency = 1 - GetFlag(Flags, Flag, "/Name/Transparency")
+                            Outline = GetFlag(Flags, Flag, "/Name/Outline")
+
+                            if Textboxes.Name.Visible then
+                                Textboxes.Name.Outline = Outline
+                                --Textboxes.Name.Font = Font
+                                Textboxes.Name.Transparency = Transparency
+                                Textboxes.Name.Size = Autoscale
+                                Textboxes.Name.Text = Mode == "Player" and Target.Name
+                                or (InEnemyTeam and "Enemy NPC" or "Ally NPC")
+
+                                Textboxes.Name.Position = AntiAliasingXY(
+                                    ScreenPosition.X,
+                                    ScreenPosition.Y - (BoxSize.Y / 2) - Textboxes.Name.TextBounds.Y - ThicknessAdjust - 2
+                                )
+                            end
+                            if Textboxes.Health.Visible then
+                                Textboxes.Health.Outline = Outline
+                                --Textboxes.Health.Font = Font
+                                Textboxes.Health.Transparency = Transparency
+                                Textboxes.Health.Size = Autoscale
+                                Textboxes.Health.Text = tostring(math.floor(HealthPercent * 100)) .. "%"
+
+                                local HealthPositionX = ESP.Drawing.HealthBar.Main.Visible and ((ScreenPosition.X - (BoxSize.X / 2)) - Textboxes.Health.TextBounds.X - (Thickness + ThicknessAdjust + 5)) or ((ScreenPosition.X - (BoxSize.X / 2)) - Textboxes.Health.TextBounds.X - ThicknessAdjust - 2)
+                                Textboxes.Health.Position = AntiAliasingXY(
+                                    HealthPositionX,
+                                    (ScreenPosition.Y - (BoxSize.Y / 2)) - ThicknessAdjust - 1
+                                )
+
+                                --ESP.Drawing.Test.Position = Textboxes.Health.Position
+                                --ESP.Drawing.Test.Size = V2New(Textboxes.Health.TextBounds.X, Textboxes.Health.TextBounds.Y)
+                            end
+                            if Textboxes.Distance.Visible then
+                                Textboxes.Distance.Outline = Outline
+                                --Textboxes.Distance.Font = Font
+                                Textboxes.Distance.Transparency = Transparency
+                                Textboxes.Distance.Size = Autoscale
+                                Textboxes.Distance.Text = tostring(math.floor(Distance)) .. " studs"
+
+                                Textboxes.Distance.Position = AntiAliasingXY(
+                                    ScreenPosition.X,
+                                    (ScreenPosition.Y + (BoxSize.Y / 2)) + ThicknessAdjust + 2
+                                )
+
+                                --ESP.Drawing.Test.Position = Textboxes.Distance.Position
+                                --ESP.Drawing.Test.Size = V2New(Textboxes.Distance.TextBounds.X, Textboxes.Distance.TextBounds.Y)
+                            end
+                            if Textboxes.Weapon.Visible then
+                                local Weapon = GetWeapon(Target, Character, Mode)
+
+                                Textboxes.Weapon.Outline = Outline
+                                --Textboxes.Weapon.Font = Font
+                                Textboxes.Weapon.Transparency = Transparency
+                                Textboxes.Weapon.Size = Autoscale
+                                Textboxes.Weapon.Text = Weapon
+
+                                Textboxes.Weapon.Position = AntiAliasingXY(
+                                    (ScreenPosition.X + (BoxSize.X / 2)) + ThicknessAdjust + 2,
+                                    ScreenPosition.Y - (BoxSize.Y / 2) - ThicknessAdjust - 1
+                                )
+
+                                --ESP.Drawing.Test.Position = Textboxes.Weapon.Position
+                                --ESP.Drawing.Test.Size = V2New(Textboxes.Weapon.TextBounds.X, Textboxes.Weapon.TextBounds.Y)
+                            end
+                        end
+                    end
+                end
+            else
+                if ESP.Drawing.Arrow.Main.Visible then
+                    Distance = GetDistance(RootPart.Position)
+                    InTheRange = IsWithinReach(GetFlag(Flags, Flag, "/DistanceCheck"), GetFlag(Flags, Flag, "/Distance"), Distance)
+                    Health, MaxHealth, IsAlive = GetHealth(Target, Character, Mode)
+                    InEnemyTeam, TeamColor = GetTeam(Target, Character, Mode)
+                    Color = GetFlag(Flags, Flag, "/TeamColor") and TeamColor
+                    or (InEnemyTeam and GetFlag(Flags, Flag, "/Enemy")[6]
+                    or GetFlag(Flags, Flag, "/Ally")[6])
+
+                    local Direction = GetRelative(RootPart.Position).Unit
+                    local SideLength = GetFlag(Flags, Flag, "/Arrow/Width") / 2
+                    local ArrowRadius = GetFlag(Flags, Flag, "/Arrow/Radius")
+                    local Base, Radians90 = Direction * ArrowRadius, Rad(90)
+
+                    local PointA = RelativeToCenter(Base + RotateVector(Direction, Radians90) * SideLength)
+                    local PointB = RelativeToCenter(Direction * (ArrowRadius + GetFlag(Flags, Flag, "/Arrow/Height")))
+                    local PointC = RelativeToCenter(Base + RotateVector(Direction, -Radians90) * SideLength)
+
+                    local Filled = GetFlag(Flags, Flag, "/Arrow/Filled")
+                    local Thickness = GetFlag(Flags, Flag, "/Arrow/Thickness")
+                    local Transparency = 1 - GetFlag(Flags, Flag, "/Arrow/Transparency")
+
+                    ESP.Drawing.Arrow.Main.Color = Color
+
+                    ESP.Drawing.Arrow.Main.Filled = Filled
+
+                    ESP.Drawing.Arrow.Main.Thickness = Thickness
+                    ESP.Drawing.Arrow.Outline.Thickness = Thickness + 2
+
+                    ESP.Drawing.Arrow.Main.Transparency = Transparency
+                    ESP.Drawing.Arrow.Outline.Transparency = Transparency
+
+                    ESP.Drawing.Arrow.Main.PointA = PointA
+                    ESP.Drawing.Arrow.Outline.PointA = PointA
+                    ESP.Drawing.Arrow.Main.PointB = PointB
+                    ESP.Drawing.Arrow.Outline.PointB = PointB
+                    ESP.Drawing.Arrow.Main.PointC = PointC
+                    ESP.Drawing.Arrow.Outline.PointC = PointC
+                end
+            end
+        end
+
+        local TeamCheck = (not GetFlag(Flags, Flag, "/TeamCheck") and not InEnemyTeam) or InEnemyTeam
+        local Visible = RootPart and OnScreen and InTheRange and IsAlive and TeamCheck
+        local ArrowVisible = RootPart and (not OnScreen) and InTheRange and IsAlive and TeamCheck
+
+        -- if ESP.Highlight then
+        --     ESP.Highlight.Enabled = Visible and GetFlag(Flags, Flag, "/Highlight/Enabled") or false
+        -- end
+
+        ESP.Drawing.Box.Visible = Visible and GetFlag(Flags, Flag, "/Box/Enabled") or false
+        ESP.Drawing.Box.OutlineVisible = ESP.Drawing.Box.Visible and GetFlag(Flags, Flag, "/Box/Outline") or false
+
+        for Index, Line in pairs(ESP.Drawing.Box) do
+            if type(Line) ~= "table" then continue end
+            Line.Main.Visible = ESP.Drawing.Box.Visible
+            Line.Outline.Visible = ESP.Drawing.Box.OutlineVisible
+        end
+
+        ESP.Drawing.HealthBar.Main.Visible = ESP.Drawing.Box.Visible and GetFlag(Flags, Flag, "/Box/HealthBar") and not BoxTooSmall or false
+        ESP.Drawing.HealthBar.Outline.Visible = ESP.Drawing.HealthBar.Main.Visible and GetFlag(Flags, Flag, "/Box/Outline") or false
+
+        ESP.Drawing.Arrow.Main.Visible = ArrowVisible and GetFlag(Flags, Flag, "/Arrow/Enabled") or false
+        ESP.Drawing.Arrow.Outline.Visible = GetFlag(Flags, Flag, "/Arrow/Outline") and ESP.Drawing.Arrow.Main.Visible or false
+
+        ESP.Drawing.HeadDot.Main.Visible = Visible and GetFlag(Flags, Flag, "/HeadDot/Enabled") or false
+        ESP.Drawing.HeadDot.Outline.Visible = GetFlag(Flags, Flag, "/HeadDot/Outline") and ESP.Drawing.HeadDot.Main.Visible or false
+
+        ESP.Drawing.Tracer.Main.Visible = Visible and GetFlag(Flags, Flag, "/Tracer/Enabled") or false
+        ESP.Drawing.Tracer.Outline.Visible = GetFlag(Flags, Flag, "/Tracer/Outline") and ESP.Drawing.Tracer.Main.Visible or false
+
+        ESP.Drawing.Textboxes.Name.Visible = Visible and GetFlag(Flags, Flag, "/Name/Enabled") or false
+        ESP.Drawing.Textboxes.Health.Visible = Visible and GetFlag(Flags, Flag, "/Health/Enabled") or false
+        ESP.Drawing.Textboxes.Distance.Visible = Visible and GetFlag(Flags, Flag, "/Distance/Enabled") or false
+        ESP.Drawing.Textboxes.Weapon.Visible = Visible and GetFlag(Flags, Flag, "/Weapon/Enabled") or false
+
+        debug.profileend()
+    end)
+end]]
+
+function DrawingLibrary.AddObject(Self, Object, ObjectName, ObjectPosition, GlobalFlag, Flag, Flags)
+    if Self.ObjectESP[Object] then return end
+
+    Self.ObjectESP[Object] = {
+        Target = {Name = ObjectName, Position = ObjectPosition},
+        Flag = Flag, GlobalFlag = GlobalFlag, Flags = Flags,
+        IsBasePart = typeof(ObjectPosition) ~= "Vector3",
+
+        Name = AddDrawing("Text", { Visible = false, ZIndex = 0, Center = true, Outline = true, Color = WhiteColor, Font = Fonts.Plex })
+    }
+
+    if Self.ObjectESP[Object].IsBasePart then
+        Self.ObjectESP[Object].Target.RootPart = ObjectPosition
+        Self.ObjectESP[Object].Target.Position = ObjectPosition.Position
+    end
+end
+function DrawingLibrary.AddESP(Self, Target, Mode, Flag, Flags)
+    if Self.ESP[Target] then return end
+
+    -- Things with Visible = false, ZIndex = 0 properties table can be removed
+    Self.ESP[Target] = {
+        Target = {}, Mode = Mode,
+        Flag = Flag, Flags = Flags,
+        Drawing = {
+            Box = {
+                Visible = false,
+                OutlineVisible = false,
+                LineLT = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                },
+                LineTL = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                },
+                LineLB = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                },
+                LineBL = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                },
+                LineRT = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                },
+                LineTR = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                },
+                LineRB = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                },
+                LineBR = {
+                    Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                    Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+                }
+            },
+            HealthBar = {
+                Outline = AddDrawing("Square", { Visible = false, ZIndex = 0, Filled = true }),
+                Main = AddDrawing("Square", { Visible = false, ZIndex = 1, Filled = true }),
+            },
+            Tracer = {
+                Outline = AddDrawing("Line", { Visible = false, ZIndex = 0 }),
+                Main = AddDrawing("Line", { Visible = false, ZIndex = 1 }),
+            },
+            HeadDot = {
+                Outline = AddDrawing("Circle", { Visible = false, ZIndex = 0 }),
+                Main = AddDrawing("Circle", { Visible = false, ZIndex = 1 }),
+            },
+            Arrow = {
+                Outline = AddDrawing("Triangle", { Visible = false, ZIndex = 0 }),
+                Main = AddDrawing("Triangle", { Visible = false, ZIndex = 1 }),
+            },
+            Textboxes = {
+                Name = AddDrawing("Text", { Visible = false, ZIndex = 0, Center = true, Outline = true, Color = WhiteColor, Font = Fonts.Plex }),
+                Distance = AddDrawing("Text", { Visible = false, ZIndex = 0, Center = true, Outline = true, Color = WhiteColor, Font = Fonts.Plex }),
+                Health = AddDrawing("Text", { Visible = false, ZIndex = 0, Center = false, Outline = true, Color = WhiteColor, Font = Fonts.Plex }),
+                Weapon = AddDrawing("Text", { Visible = false, ZIndex = 0, Center = false, Outline = true, Color = WhiteColor, Font = Fonts.Plex })
+            },
+            --Test = AddDrawing("Square", { Visible = true, ZIndex = -1, Filled = true })
+        }
+    }
+
+    --Self.ESP[Target].Connection = Self:InitRender(Target, Mode, Flag, Flags)
+    --Self.ESP[Target].Highlight = HighlightNew(Target, Self.ESP[Target].RESP)
+end
+
+function DrawingLibrary.RemoveESP(Self, Target)
+    local ESP = Self.ESP[Target]
+    if not ESP then return end
+
+    --ESP.Connection:Disconnect()
+    ClearDrawing(ESP.Drawing)
+    Self.ESP[Target] = nil
+end
+
+function DrawingLibrary.RemoveObject(Self, Target)
+    local ESP = Self.ObjectESP[Target]
+    if not ESP then return end
+
+    ESP.Name:Destroy()
+    Self.ObjectESP[Target] = nil
+end
+
+function DrawingLibrary.SetupCursor(Window)
+    local Cursor = AddDrawing("Image", {
+        Size = V2New(64, 64) / 1.5,
+        Data = Parvus.Cursor,
+        --Rounding = 0,
+
+        --Transparency = 1,
+        --Visible = false,
+        ZIndex = 3
+    })
+
+    RunService.Heartbeat:Connect(function()
+        Cursor.Visible = Window.Flags["Mouse/Enabled"] and Window.Enabled and UserInputService.MouseBehavior == Enum.MouseBehavior.Default
+        if Cursor.Visible then Cursor.Position = UserInputService:GetMouseLocation() - Cursor.Size / 2 end
     end)
 end
 
-local function AircraftFly(Self, Enabled, Speed, CameraControl)
-    if not Enabled then return end
+function DrawingLibrary.SetupCrosshair(Flags)
+    local CrosshairL = AddDrawing("Line", { Thickness = 1.5, Transparency = 1, Visible = false, ZIndex = 2 })
+    local CrosshairR = AddDrawing("Line", { Thickness = 1.5, Transparency = 1, Visible = false, ZIndex = 2 })
+    local CrosshairT = AddDrawing("Line", { Thickness = 1.5, Transparency = 1, Visible = false, ZIndex = 2 })
+    local CrosshairB = AddDrawing("Line", { Thickness = 1.5, Transparency = 1, Visible = false, ZIndex = 2 })
 
-    Self._force.MaxForce = Vector3.new(1, 1, 1) * 40000000
-    Self._force.Velocity = InputToVelocity() * Speed
+    RunService.Heartbeat:Connect(function()
+        local CrosshairEnabled = Flags["Crosshair/Enabled"] and UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default and not UserInputService.MouseIconEnabled
+        CrosshairL.Visible, CrosshairR.Visible, CrosshairT.Visible, CrosshairB.Visible = CrosshairEnabled, CrosshairEnabled, CrosshairEnabled, CrosshairEnabled
 
-    if CameraControl then
-        Self._gyro.MaxTorque = Vector3.new(1, 1, 1) * 4000
-        Self._gyro.CFrame = Camera.CFrame * CFrame.Angles(0, math.pi, 0)
-    end
-end
-local function Teleport(Position, Velocity)
-    local PrimaryPart = LocalPlayer.Character
-    and LocalPlayer.Character.PrimaryPart
-    if not PrimaryPart then return end
-    local TPModule = {}
+        if CrosshairEnabled then
+            local MouseLocation = UserInputService:GetMouseLocation()
+            local Color = Flags["Crosshair/Color"]
+            local Size = Flags["Crosshair/Size"]
+            local Gap = Flags["Crosshair/Gap"]
+            local Transparency = 1 - Color[4]
+            Color = Color[6]
 
-    local AlignPosition = Instance.new("AlignPosition")
-    AlignPosition.Mode = Enum.PositionAlignmentMode.OneAttachment
-    AlignPosition.Attachment0 = PrimaryPart.RootRigAttachment
+            CrosshairL.Color = Color
+            CrosshairL.Transparency = Transparency
+            CrosshairL.From = MouseLocation - V2New(Gap, 0)
+            CrosshairL.To = MouseLocation - V2New(Size + Gap, 0)
 
-    local AlignOrientation = Instance.new("AlignOrientation")
-    AlignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
-    AlignOrientation.Attachment0 = PrimaryPart.RootRigAttachment
+            CrosshairR.Color = Color
+            CrosshairR.Transparency = Transparency
+            CrosshairR.From = MouseLocation + V2New(Gap + 1, 0)
+            CrosshairR.To = MouseLocation + V2New(Size + (Gap + 1), 0)
 
-    --AlignPosition.MaxForce = 10000
-    AlignPosition.MaxVelocity = Velocity
-    AlignPosition.Position = Position
+            CrosshairT.Color = Color
+            CrosshairT.Transparency = Transparency
+            CrosshairT.From = MouseLocation - V2New(0, Gap)
+            CrosshairT.To = MouseLocation - V2New(0, Size + Gap)
 
-    AlignPosition.Parent = PrimaryPart
-    AlignOrientation.Parent = PrimaryPart
-
-    function TPModule:Update(Position, Velocity)
-        AlignPosition.MaxVelocity = Velocity
-        AlignPosition.Position = Position
-    end
-    function TPModule:Wait()
-        while task.wait() do
-            if (PrimaryPart.Position - AlignPosition.Position).Magnitude < 5 then
-                break
-            end
+            CrosshairB.Color = Color
+            CrosshairB.Transparency = Transparency
+            CrosshairB.From = MouseLocation + V2New(0, Gap + 1)
+            CrosshairB.To = MouseLocation + V2New(0, Size + (Gap + 1))
         end
-    end
-    function TPModule:Destroy()
-        TPModule:Wait()
-        AlignPosition:Destroy()
-        AlignOrientation:Destroy()
-    end return TPModule
-end
-function TeleportCharacter(Position)
-    local PrimaryPart = LocalPlayer.Character
-    and LocalPlayer.Character.PrimaryPart
-    if not PrimaryPart then return end
-
-    local OldNC = Window:GetValue("BRM5/NoClip")
-    Window:SetValue("BRM5/NoClip", true)
-
-    LocalPlayer.Character.Humanoid.Sit = true
-    PrimaryPart.CFrame = CFrame.new(PrimaryPart.Position + Vector3.new(0, 500, 0))
-    local TP = Teleport(Position + Vector3.new(0, 500, 0), 500)
-    TP:Destroy() PrimaryPart.CFrame = CFrame.new(Position)
-    LocalPlayer.Character.Humanoid.Sit = false
-
-    Window:SetValue("BRM5/NoClip", OldNC)
-end
-function EnableSwitch(Switch)
-    local CameraMod = RequireModule("CameraService")
-    if not CameraMod._handler._buttons then return end
-    for Index, Switches in pairs(CameraMod._handler._buttons) do
-        if Switches._id == Switch then
-            Switches:Update()
-            Switches:Select()
-            CameraMod._switch = Switches
-            CameraMod._switch:Activate()
-            CameraMod._switch:Unselect()
-        end
-    end
+    end)
 end
 
---[[local OldRecoilValue = Window.Flags["BRM5/Recoil/Value"]
-local RecoilFunction = RequireModule("CharacterCamera").Recoil
-setconstant(RecoilFunction, 6, toScale(OldRecoilValue, 0, 100, 250, 100))]]
+function DrawingLibrary.SetupFOV(Flag, Flags)
+    local FOV = AddDrawing("Circle", { ZIndex = 4 })
+    local FOVOutline = AddDrawing("Circle", { ZIndex = 3 })
 
-repeat task.wait() until RequireModule("RoundInterface")
-RoundInterface = RequireModule("RoundInterface")
-repeat task.wait() until RequireModule("ActorService")
-Actors = RequireModule("ActorService")._actors
---repeat task.wait() until RequireModule("SquadInterface")
---Squads = RequireModule("SquadInterface")
+    RunService.Heartbeat:Connect(function()
+        local Visible = GetFlag(Flags, Flag, "/Enabled")
+        and GetFlag(Flags, Flag, "/FOV/Enabled")
 
---[[local ChunkService = RequireModule("ChunkService")
-ChunkService.LODEnabled = false
+        FOV.Visible = Visible
+        FOVOutline.Visible = Visible
 
-local function ResetWaste()
-    local ChunkService = RequireModule("ChunkService")
-    local _loaded = ChunkService._loaded
+        if Visible then
+            local MouseLocation = UserInputService:GetMouseLocation()
+            local Thickness = GetFlag(Flags, Flag, "/FOV/Thickness")
+            local NumSides = GetFlag(Flags, Flag, "/FOV/NumSides")
+            local Filled = GetFlag(Flags, Flag, "/FOV/Filled")
+            local Radius = GetFlag(Flags, Flag, "/FOV/Radius")
+            local Color = GetFlag(Flags, Flag, "/FOV/Color")
+            local Transparency = 1 - Color[4]
+            Color = Color[6]
 
-	for key, val in pairs(_loaded) do
-		if key:GetAttribute("Waste") == nil then continue end
-		val[4] = false
-		val[5] = nil
+            FOV.Color = Color
 
-		for _, child in pairs(key:GetChildren()) do
-			if not ChunkService._leaves[child] then continue end
-			ChunkService._leaves[child].Node:Destroy()
-			ChunkService._leaves[child] = nil
-		end
+            FOV.Transparency = Transparency
+            FOVOutline.Transparency = Transparency
 
-		key:Destroy()
-		_loaded[key] = nil
-	end
+            FOV.Thickness = Thickness
+            FOVOutline.Thickness = Thickness + 2
+            
+            FOV.NumSides = NumSides
+            FOVOutline.NumSides = NumSides
 
-	ChunkService._chunk = ""
+            FOV.Filled = Filled
+            --FOVOutline.Filled = Filled
+
+            FOV.Radius = Radius
+            FOVOutline.Radius = Radius
+
+            FOV.Position = MouseLocation
+            FOVOutline.Position = MouseLocation
+        end
+    end)
 end
-
-ResetWaste()]]
-
-HookFunction("ControllerClass", "LateUpdate", function(Old, Self, ...)
-    if Window.Flags["BRM5/WalkSpeed/Enabled"] then
-        Self.Speed = Window.Flags["BRM5/WalkSpeed/Value"]
-    end
-
-    return Old(Self, ...)
-end)
---[[HookFunction("MovementService", "Mount", function(Old, ...)
-    return Old(...)
-end)]]
-HookFunction("ViewmodelClass", "Update", function(Old, Self, ...)
-    local Args = {...}
-
-    if Window.Flags["BRM5/WalkSpeed/Enabled"] and Args[2] then
-        Args[2] = CFrame.new(Args[2].Position)
-    end
-
-    return Old(Self, unpack(Args))
-end)
---[[HookFunction("CameraService", "Activate", function(Old, Self, ...)
-    local Args = {...}
-
-    if Window.Flags["BRM5/Recoil/Enabled"] and Args[1] == "Recoil" then
-        local RecoilValue = Window.Flags["BRM5/Recoil/Value"]
-        Args[2] = Args[2] * (RecoilValue / 100)
-        if OldRecoilValue ~= RecoilValue then
-            OldRecoilValue = RecoilValue
-            setconstant(RecoilFunction, 6,
-            toScale(RecoilValue, 0, 100, 250, 100))
-        end
-    end
-
-    return Old(Self, unpack(Args))
-end)]]
-HookFunction("CharacterCamera", "Update", function(Old, Self, ...)
-    if Window.Flags["BRM5/NoBob"] then
-        Self._bob = 0
-    end
-
-    if Window.Flags["BRM5/Recoil/Enabled"] then
-        Self._recoil.Velocity *= Window.Flags["BRM5/Recoil/Value"] / 100
-    end
-
-    return Old(Self, ...)
-end)
-HookFunction("FirearmInventory", "_firemode", function(Old, Self, ...)
-    if Window.Flags["BRM5/Firemodes"] then
-        local Config = Self._config
-
-        if not table.find(Config.Tune.Firemodes, 1) then
-            table.insert(Config.Tune.Firemodes, 1)
-        end
-        if not table.find(Config.Tune.Firemodes, 2) then
-            table.insert(Config.Tune.Firemodes, 2)
-        end
-        if not table.find(Config.Tune.Firemodes, 3) then
-            table.insert(Config.Tune.Firemodes, 3)
-        end
-    end
-
-    return Old(Self, ...)
-end)
-HookFunction("FirearmInventory", "_discharge", function(Old, Self, ...)
-    if Window.Flags["BRM5/RapidFire/Enabled"] then
-        Self._config.Tune.RPM = Window.Flags["BRM5/RapidFire/Value"]
-    end
-    if Window.Flags["BRM5/BulletDrop"] then
-        Self._velocity = 1e6
-        Self._range = 1e6
-    end
-
-    ProjectileSpeed = Self._velocity
-    return Old(Self, ...)
-end)
-HookFunction("CharacterMovement", "Update", function(Old, Self, ...)
-    if Window.Flags["BRM5/NoStamina"] then
-        Self._exhausted = 0
-    end
-
-    return Old(Self, ...)
-end)
-HookFunction("TurretMovement", "_discharge", function(Old, Self, ...)
-    if Window.Flags["BRM5/BulletDrop"] then
-        Self._tune.Velocity = 1e6
-        Self._tune.Range = 1e6
-    end
-
-    ProjectileSpeed = Self._tune.Velocity
-    GroundTip = Self._tip
-    return Old(Self, ...)
-end)
-HookFunction("AircraftMovement", "_discharge", function(Old, Self, ...)
-    if Window.Flags["BRM5/BulletDrop"] then
-        Self._tune.Velocity = 1e6
-        Self._tune.Range = 1e6
-    end
-
-    ProjectileSpeed = Self._tune.Velocity
-    AircraftTip = Self._tip
-    return Old(Self, ...)
-end)
-HookFunction("GroundMovement", "Update", function(Old, Self, ...)
-    if Window.Flags["BRM5/Vehicle/Enabled"] then
-        local Args = {...}
-        local ReturnArgs = {Old(Self, ...)}
-
-        for Index, Motor in pairs(Self._motors.f) do
-            Motor.MotorMaxTorque = 200000 * Window.Flags["BRM5/Vehicle/Speed"]
-            Motor.AngularVelocity = (-Args[2].Y * Window.Flags["BRM5/Vehicle/Speed"])
-        end
-        for Index, Motor in pairs(Self._motors.b) do
-            Motor.MotorMaxTorque = 200000 * Window.Flags["BRM5/Vehicle/Speed"]
-            Motor.AngularVelocity = -(-Args[2].Y * Window.Flags["BRM5/Vehicle/Speed"])
-        end
-
-        --Self._speed = Self._handbrake and Window.Flags["BRM5/Vehicle/Speed"] or Args[2].Y >= 0 and Window.Flags["BRM5/Vehicle/Speed"] > 0 and Self._main.AssemblyLinearVelocity.Magnitude < 2 and 0 or Window.Flags["BRM5/Vehicle/Speed"]
-        --Self._tune.Speed = Window.Flags["BRM5/Vehicle/Speed"]
-        --Self._tune.Accelerate = Window.Flags["BRM5/Vehicle/Acceleration"]
-        return unpack(ReturnArgs)
-    end
-
-    return Old(Self, ...)
-end)
-HookFunction("HelicopterMovement", "Update", function(Old, Self, ...)
-    if Window.Flags["BRM5/Helicopter/Enabled"] then
-        Self._tune.Speed = Window.Flags["BRM5/Helicopter/Speed"]
-    end
-
-    return Old(Self, ...)
-end)
-HookFunction("AircraftMovement", "Update", function(Old, Self, ...)
-    if Window.Flags["BRM5/Aircraft/Enabled"] then
-        --[[Args[1]._speed = 1
-        Args[1]._gyro.CFrame = Args[1]._gyro.CFrame * CFrame.Angles(math.rad(-Args[3].Y * Args[4] * 50), 0, math.rad(Args[3].X * Args[4] * 50));
-        Args[1]._gyro.MaxTorque = Vector3.new(1, 1, 1) * 4000
-        Args[1]._force.MaxForce = Vector3.new(1, 1, 1) * 40000000 * Args[1]._speed
-        Args[1]._force.Velocity = Args[1]._main.CFrame.LookVector * -Window.Flags["BRM5/Aircraft/Speed"]]
-        Self._model.RPM.Value = Window.Flags["BRM5/Aircraft/Speed"]
-    end
-
-    AircraftFly(Self,
-        Window.Flags["BRM5/Aircraft/FlyEnabled"],
-        Window.Flags["BRM5/Aircraft/FlySpeed"],
-        Window.Flags["BRM5/Aircraft/Camera"]
-    )
-
-    return Old(Self, ...)
-end)
-HookFunction("EnvironmentService", "Update", function(Old, Self, ...)
-    if Window.Flags["BRM5/Lighting/Enabled"] then
-        Self._atmospheres.Default.Density = Window.Flags["BRM5/Lighting/Fog"]
-        if Self._atmospheres.Desert and Self._atmospheres.Snow then
-            Self._atmospheres.Desert.Density = Window.Flags["BRM5/Lighting/Fog"]
-            Self._atmospheres.Snow.Density = Window.Flags["BRM5/Lighting/Fog"]
-        end
-    end
-
-    return Old(Self, ...)
-end)
-
-HookSignal(RemoteEvent.OnClientEvent, 1, function(Old, ...)
-    local Args = {...}
-
-    if Args[1] == "ReplicateNVG" then
-        if Window.Flags["BRM5/DisableNVG"] then
-            Args[2] = false
-        end
-        if Window.Flags["BRM5/NVGShape"] then
-            Args[3] = ""
-        end
-    end
-
-    return Old(unpack(Args))
-end)
-
-task.spawn(function()
-    for Index, Table in pairs(getgc(true)) do
-        if typeof(Table) == "table"
-        and rawget(Table, "FireServer")
-        and rawget(Table, "InvokeServer") then
-            Network = Table
-            break
-        end
-    end
-end)
-
-local OldNamecall = nil
-OldNamecall = hookmetamethod(game, "__namecall", function(Self, ...)
-    if SilentAim and getnamecallmethod() == "Raycast" then
-        if math.random(100) <= Window.Flags["SilentAim/HitChance"] then
-            local Args = {...}
-
-            if Args[1] == Camera.CFrame.Position then
-                Args[2] = SilentAim[3].Position - Camera.CFrame.Position
-            elseif AircraftTip and Args[1] == AircraftTip.WorldCFrame.Position then
-                Args[2] = SilentAim[3].Position - AircraftTip.WorldCFrame.Position
-            elseif GroundTip and Args[1] == GroundTip.WorldCFrame.Position then
-                Args[2] = SilentAim[3].Position - GroundTip.WorldCFrame.Position
-            end
-
-            return OldNamecall(Self, unpack(Args))
-        end
-    end
-
-    return OldNamecall(Self, ...)
-end)
-
-Parvus.Utilities.NewThreadLoop(0, function()
-    if not (Aimbot or Window.Flags["Aimbot/AlwaysEnabled"]) then return end
-
-    AimAt(GetClosest(
-        Window.Flags["Aimbot/Enabled"],
-        Window.Flags["Aimbot/TeamCheck"],
-        Window.Flags["Aimbot/VisibilityCheck"],
-        Window.Flags["Aimbot/DistanceCheck"],
-        Window.Flags["Aimbot/DistanceLimit"],
-        Window.Flags["Aimbot/FOV/Radius"],
-        Window.Flags["Aimbot/Priority"][1],
-        Window.Flags["Aimbot/BodyParts"],
-        Window.Flags["Aimbot/Prediction"],
-        Window.Flags["BRM5/NPCMode"]
-    ), Window.Flags["Aimbot/Sensitivity"] / 100)
-end)
-Parvus.Utilities.NewThreadLoop(0, function()
-    SilentAim = GetClosest(
-        Window.Flags["SilentAim/Enabled"],
-        Window.Flags["SilentAim/TeamCheck"],
-        Window.Flags["SilentAim/VisibilityCheck"],
-        Window.Flags["SilentAim/DistanceCheck"],
-        Window.Flags["SilentAim/DistanceLimit"],
-        Window.Flags["SilentAim/FOV/Radius"],
-        Window.Flags["SilentAim/Priority"][1],
-        Window.Flags["SilentAim/BodyParts"],
-        Window.Flags["SilentAim/Prediction"],
-        Window.Flags["BRM5/NPCMode"]
-    )
-end)
-Parvus.Utilities.NewThreadLoop(0, function()
-    if not (Trigger or Window.Flags["Trigger/AlwaysEnabled"]) then return end
-    if not isrbxactive() then return end
-
-    local TriggerClosest = GetClosest(
-        Window.Flags["Trigger/Enabled"],
-        Window.Flags["Trigger/TeamCheck"],
-        Window.Flags["Trigger/VisibilityCheck"],
-        Window.Flags["Trigger/DistanceCheck"],
-        Window.Flags["Trigger/DistanceLimit"],
-        Window.Flags["Trigger/FOV/Radius"],
-        Window.Flags["Trigger/Priority"][1],
-        Window.Flags["Trigger/BodyParts"],
-        Window.Flags["Trigger/Prediction"],
-        Window.Flags["BRM5/NPCMode"]
-    ) if not TriggerClosest then return end
-
-    task.wait(Window.Flags["Trigger/Delay"]) mouse1press()
-    if Window.Flags["Trigger/HoldMouseButton"] then
-        while task.wait() do
-            TriggerClosest = GetClosest(
-                Window.Flags["Trigger/Enabled"],
-                Window.Flags["Trigger/TeamCheck"],
-                Window.Flags["Trigger/VisibilityCheck"],
-                Window.Flags["Trigger/DistanceCheck"],
-                Window.Flags["Trigger/DistanceLimit"],
-                Window.Flags["Trigger/FOV/Radius"],
-                Window.Flags["Trigger/Priority"][1],
-                Window.Flags["Trigger/BodyParts"],
-                Window.Flags["Trigger/Prediction"],
-                Window.Flags["BRM5/NPCMode"]
-            ) if not TriggerClosest or not Trigger then break end
-        end
-    end mouse1release()
-end)
-
-Lighting.Changed:Connect(function(Property)
-    if Property == "OutdoorAmbient" and
-    Window.Flags["BRM5/Lighting/Brightness"] and
-    Lighting.OutdoorAmbient ~= WhiteColor then
-        Lighting.OutdoorAmbient = WhiteColor
-    end
-    if Property == "ClockTime" and
-    Window.Flags["BRM5/Lighting/Enabled"] and
-    Lighting.ClockTime ~= Window.Flags["BRM5/Lighting/Time"] then
-        Lighting.ClockTime = Window.Flags["BRM5/Lighting/Time"]
-    end
-end)
 
 Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     Camera = Workspace.CurrentCamera
 end)
 
-for Index, Item in pairs(RaycastFolder:GetChildren()) do
-    if not Item:GetAttribute("Compound") then continue end
-
-    Parvus.Utilities.Drawing:AddObject(Item, Item.Name, Item.PrimaryPart,
-    "BRM5/ESP/Intel", "BRM5/ESP/Intel", Window.Flags)
-end
-RaycastFolder.ChildAdded:Connect(function(Item) task.wait(1)
-    if not Item:GetAttribute("Compound") then return end
-
-    Parvus.Utilities.Drawing:AddObject(Item, Item.Name, Item.PrimaryPart,
-    "BRM5/ESP/Intel", "BRM5/ESP/Intel", Window.Flags)
-end)
-RaycastFolder.ChildRemoved:Connect(function(Item)
-    Parvus.Utilities.Drawing:RemoveObject(Item)
-end)
-
-for Index, NPC in pairs(NPCFolder:GetChildren()) do
-    task.spawn(function()
-        if NPC:WaitForChild("HumanoidRootPart", 5)
-        and NPC.HumanoidRootPart:WaitForChild("AlignOrientation", 5) then
-            Parvus.Utilities.Drawing:AddESP(NPC, "NPC", "ESP/NPC", Window.Flags)
-        end
-    end)
-end
-NPCFolder.ChildAdded:Connect(function(NPC)
-    if NPC:WaitForChild("HumanoidRootPart", 5)
-    and NPC.HumanoidRootPart:WaitForChild("AlignOrientation", 5) then
-        Parvus.Utilities.Drawing:AddESP(NPC, "NPC", "ESP/NPC", Window.Flags)
+DrawingLibrary.Connection = RunService.RenderStepped:Connect(function()
+    debug.profilebegin("PARVUS_DRAWING")
+    for Target, ESP in pairs(DrawingLibrary.ESP) do
+        DrawingLibrary.Update(ESP, Target)
     end
+    for Object, ESP in pairs(DrawingLibrary.ObjectESP) do
+        --DrawingLibrary.UpdateObject(ESP, Object)
+        if not GetFlag(ESP.Flags, ESP.GlobalFlag, "/Enabled")
+        or not GetFlag(ESP.Flags, ESP.Flag, "/Enabled") then
+            ESP.Name.Visible = false
+            continue
+        end
+
+        ESP.Target.Position = ESP.IsBasePart and ESP.Target.RootPart.Position or ESP.Target.Position
+        ESP.Target.ScreenPosition, ESP.Target.OnScreen = WorldToScreen(ESP.Target.Position)
+
+        ESP.Target.Distance = GetDistance(ESP.Target.Position)
+        ESP.Target.InTheRange = IsWithinReach(GetFlag(ESP.Flags, ESP.GlobalFlag, "/DistanceCheck"),
+        GetFlag(ESP.Flags, ESP.GlobalFlag, "/Distance"), ESP.Target.Distance)
+
+        ESP.Name.Visible = (ESP.Target.OnScreen and ESP.Target.InTheRange) or false
+
+        if ESP.Name.Visible then
+            local Color = GetFlag(ESP.Flags, ESP.Flag, "/Color")
+            ESP.Name.Transparency = 1 - Color[4]
+            ESP.Name.Color = Color[6]
+
+            ESP.Name.Position = ESP.Target.ScreenPosition
+            ESP.Name.Text = string.format("%s\n%i studs", ESP.Target.Name, ESP.Target.Distance)
+        end
+    end
+    debug.profileend()
 end)
-NPCFolder.ChildRemoved:Connect(function(NPC)
-    Parvus.Utilities.Drawing:RemoveESP(NPC)
-end)
 
-for Index, Player in pairs(PlayerService:GetPlayers()) do
-    if Player == LocalPlayer then continue end
-    Parvus.Utilities.Drawing:AddESP(Player, "Player", "ESP/Player", Window.Flags)
-end
-PlayerService.PlayerAdded:Connect(function(Player)
-    Parvus.Utilities.Drawing:AddESP(Player, "Player", "ESP/Player", Window.Flags)
-end)
-PlayerService.PlayerRemoving:Connect(function(Player)
-    Parvus.Utilities.Drawing:RemoveESP(Player)
-end)
+--[[DrawingLibrary.Connection = RunService.RenderStepped:Connect(function()
+    debug.profilebegin("PARVUS_DRAWING")
+    for Target, ESP in pairs(DrawingLibrary.ESP) do
+        ESP.Target.Character, ESP.Target.RootPart = GetCharacter(Target, ESP.Mode)
+        if ESP.Target.Character and ESP.Target.RootPart then
+            ESP.Target.ScreenPosition, ESP.Target.OnScreen = WorldToScreen(ESP.Target.RootPart.Position)
 
+            if ESP.Target.OnScreen then
+                ESP.Target.Distance = GetDistance(ESP.Target.RootPart.Position)
+                ESP.Target.InTheRange = IsWithinReach(GetFlag(ESP.Flags, ESP.Flag, "/DistanceCheck"), GetFlag(ESP.Flags, ESP.Flag, "/Distance"), ESP.Target.Distance)
 
+                if ESP.Target.InTheRange then
+                    ESP.Target.Health, ESP.Target.MaxHealth, ESP.Target.IsAlive = GetHealth(Target, ESP.Target.Character, ESP.Mode)
+                    ESP.Target.InEnemyTeam, ESP.Target.TeamColor = GetTeam(Target, ESP.Target.Character, ESP.Mode)
+                    ESP.Target.Color = GetFlag(ESP.Flags, ESP.Flag, "/TeamColor") and ESP.Target.TeamColor
+                    or (ESP.Target.InEnemyTeam and GetFlag(ESP.Flags, ESP.Flag, "/Enemy")[6]
+                    or GetFlag(ESP.Flags, ESP.Flag, "/Ally")[6])
 
+                    -- if ESP.Highlight and ESP.Highlight.Enabled then
+                    --     local OutlineColor = GetFlag(ESP.Flags, Flag, "/Highlight/OutlineColor")
+                    --     ESP.Highlight.DepthMode = GetFlag(ESP.Flags, Flag, "/Highlight/Occluded")
+                    --     and Enum.HighlightDepthMode.Occluded or Enum.HighlightDepthMode.AlwaysOnTop
+                    --     --ESP.Highlight.Adornee = Character
+                    --     ESP.Highlight.FillColor = ESP.Target.Color
+                    --     ESP.Highlight.OutlineColor = OutlineColor[6]
+                    --     ESP.Highlight.OutlineTransparency = OutlineColor[4]
+                    --     ESP.Highlight.FillTransparency = GetFlag(ESP.Flags, Flag, "/Highlight/Transparency")
+                    -- end
 
+                    if ESP.Drawing.Tracer.Main.Visible or ESP.Drawing.HeadDot.Main.Visible then
+                        local Head = FindFirstChild(ESP.Target.Character, "Head", true)
+
+                        if Head then
+                            local HeadPosition = WorldToScreen(Head.Position)
+
+                            if ESP.Drawing.Tracer.Main.Visible then
+                                local FromPosition = GetFlag(ESP.Flags, ESP.Flag, "/Tracer/Mode")
+                                local Thickness = GetFlag(ESP.Flags, ESP.Flag, "/Tracer/Thickness")
+                                local Transparency = 1 - GetFlag(ESP.Flags, ESP.Flag, "/Tracer/Transparency")
+                                FromPosition = (FromPosition[1] == "From Mouse" and UserInputService:GetMouseLocation())
+                                or (FromPosition[1] == "From Bottom" and V2New(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y))
+
+                                ESP.Drawing.Tracer.Main.Color = ESP.Target.Color
+
+                                ESP.Drawing.Tracer.Main.Thickness = Thickness
+                                ESP.Drawing.Tracer.Outline.Thickness = Thickness + 2
+
+                                ESP.Drawing.Tracer.Main.Transparency = Transparency
+                                ESP.Drawing.Tracer.Outline.Transparency = Transparency
+
+                                ESP.Drawing.Tracer.Main.From = FromPosition
+                                ESP.Drawing.Tracer.Outline.From = FromPosition
+
+                                ESP.Drawing.Tracer.Main.To = HeadPosition
+                                ESP.Drawing.Tracer.Outline.To = HeadPosition
+                            end
+                            if ESP.Drawing.HeadDot.Main.Visible then
+                                local Filled = GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/Filled")
+                                local Radius = GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/Radius")
+                                local NumSides = GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/NumSides")
+                                local Thickness = GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/Thickness")
+                                local Autoscale = GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/Autoscale")
+                                local Transparency = 1 - GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/Transparency")
+                                Radius = GetScaleFactor(Autoscale, Radius, ESP.Target.Distance)
+
+                                ESP.Drawing.HeadDot.Main.Color = ESP.Target.Color
+
+                                ESP.Drawing.HeadDot.Main.Transparency = Transparency
+                                ESP.Drawing.HeadDot.Outline.Transparency = Transparency
+
+                                ESP.Drawing.HeadDot.Main.NumSides = NumSides
+                                ESP.Drawing.HeadDot.Outline.NumSides = NumSides
+
+                                ESP.Drawing.HeadDot.Main.Radius = Radius
+                                ESP.Drawing.HeadDot.Outline.Radius = Radius
+
+                                ESP.Drawing.HeadDot.Main.Thickness = Thickness
+                                ESP.Drawing.HeadDot.Outline.Thickness = Thickness + 2
+
+                                ESP.Drawing.HeadDot.Main.Filled = Filled
+
+                                ESP.Drawing.HeadDot.Main.Position = HeadPosition
+                                ESP.Drawing.HeadDot.Outline.Position = HeadPosition
+                            end
+                        end
+                    end
+                    if ESP.Drawing.Box.Visible then
+                        local BoxSize = CalculateBoxSize(ESP.Target.Character, ESP.Target.Distance)
+                        local HealthPercent = ESP.Target.Health / ESP.Target.MaxHealth
+                        local Textboxes = ESP.Drawing.Textboxes
+                        ESP.Target.BoxTooSmall = BoxSize.Y < 18
+
+                        local Transparency = 1 - GetFlag(ESP.Flags, ESP.Flag, "/Box/Transparency")
+                        local CornerSize = GetFlag(ESP.Flags, ESP.Flag, "/Box/CornerSize")
+                        local Thickness = GetFlag(ESP.Flags, ESP.Flag, "/Box/Thickness")
+                        local Filled = GetFlag(ESP.Flags, ESP.Flag, "/Box/Filled")
+
+                        local ThicknessAdjust = Floor(Thickness / 2)
+                        CornerSize = V2New(
+                            (BoxSize.X / 2) * (CornerSize / 100),
+                            (BoxSize.Y / 2) * (CornerSize / 100)
+                        )
+
+                        local From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X - (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        local To = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X - (BoxSize.X / 2),
+                            (ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)) + CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineLT.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineLT.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineLT.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineLT.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineLT.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineLT.Main.From = From - V2New(0, ThicknessAdjust)
+                        ESP.Drawing.Box.LineLT.Outline.From = From - V2New(0, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineLT.Main.To = To
+                        ESP.Drawing.Box.LineLT.Outline.To = To + V2New(0, 1)
+
+                        From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X - (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ESP.Target.ScreenPosition.X - (BoxSize.X / 2)) + CornerSize.X,
+                            ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineTL.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineTL.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineTL.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineTL.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineTL.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineTL.Main.From = From - V2New(ThicknessAdjust, 0)
+                        ESP.Drawing.Box.LineTL.Outline.From = From - V2New(ThicknessAdjust + 1, 0)
+                        ESP.Drawing.Box.LineTL.Main.To = To
+                        ESP.Drawing.Box.LineTL.Outline.To = To + V2New(1, 0)
+
+                        From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X - (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X - (BoxSize.X / 2),
+                            (ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)) - CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineLB.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineLB.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineLB.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineLB.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineLB.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineLB.Main.From = From + V2New(0, ThicknessAdjust)
+                        ESP.Drawing.Box.LineLB.Outline.From = From + V2New(0, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineLB.Main.To = To
+                        ESP.Drawing.Box.LineLB.Outline.To = To - V2New(0, 1)
+
+                        From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X - (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ESP.Target.ScreenPosition.X - (BoxSize.X / 2)) + CornerSize.X,
+                            ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineBL.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineBL.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineBL.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineBL.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineBL.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineBL.Main.From = From - V2New(ThicknessAdjust, 1)
+                        ESP.Drawing.Box.LineBL.Outline.From = From - V2New(ThicknessAdjust + 1, 1)
+                        ESP.Drawing.Box.LineBL.Main.To = To - V2New(0, 1)
+                        ESP.Drawing.Box.LineBL.Outline.To = To - V2New(-1, 1)
+
+                        From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X + (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X + (BoxSize.X / 2),
+                            (ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)) + CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineRT.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineRT.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineRT.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineRT.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineRT.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineRT.Main.From = From - V2New(1, ThicknessAdjust)
+                        ESP.Drawing.Box.LineRT.Outline.From = From - V2New(1, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineRT.Main.To = To - V2New(1, 0)
+                        ESP.Drawing.Box.LineRT.Outline.To = To + V2New(-1, 1)
+
+                        From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X + (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ESP.Target.ScreenPosition.X + (BoxSize.X / 2)) - CornerSize.X,
+                            ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineTR.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineTR.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineTR.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineTR.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineTR.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineTR.Main.From = From + V2New(ThicknessAdjust, 0)
+                        ESP.Drawing.Box.LineTR.Outline.From = From + V2New(ThicknessAdjust + 1, 0)
+                        ESP.Drawing.Box.LineTR.Main.To = To
+                        ESP.Drawing.Box.LineTR.Outline.To = To - V2New(1, 0)
+
+                        From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X + (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X + (BoxSize.X / 2),
+                            (ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)) - CornerSize.Y
+                        )
+
+                        ESP.Drawing.Box.LineRB.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineRB.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineRB.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineRB.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineRB.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineRB.Main.From = From + V2New(-1, ThicknessAdjust)
+                        ESP.Drawing.Box.LineRB.Outline.From = From + V2New(-1, ThicknessAdjust + 1)
+                        ESP.Drawing.Box.LineRB.Main.To = To - V2New(1, 0)
+                        ESP.Drawing.Box.LineRB.Outline.To = To - V2New(1, 1)
+
+                        From = AntiAliasingXY(
+                            ESP.Target.ScreenPosition.X + (BoxSize.X / 2),
+                            ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+                        To = AntiAliasingXY(
+                            (ESP.Target.ScreenPosition.X + (BoxSize.X / 2)) - CornerSize.X,
+                            ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)
+                        )
+
+                        ESP.Drawing.Box.LineBR.Main.Color = ESP.Target.Color
+                        ESP.Drawing.Box.LineBR.Main.Thickness = Thickness
+                        ESP.Drawing.Box.LineBR.Outline.Thickness = Thickness + 2
+                        ESP.Drawing.Box.LineBR.Main.Transparency = Transparency
+                        ESP.Drawing.Box.LineBR.Outline.Transparency = Transparency
+                        ESP.Drawing.Box.LineBR.Main.From = From + V2New(ThicknessAdjust, -1)
+                        ESP.Drawing.Box.LineBR.Outline.From = From + V2New(ThicknessAdjust + 1, -1)
+                        ESP.Drawing.Box.LineBR.Main.To = To - V2New(0, 1)
+                        ESP.Drawing.Box.LineBR.Outline.To = To - V2New(1, 1)
+
+                        if ESP.Drawing.HealthBar.Main.Visible then
+                            ESP.Drawing.HealthBar.Main.Color = EvalHealth(HealthPercent)
+                            ESP.Drawing.HealthBar.Main.Transparency = Transparency
+                            ESP.Drawing.HealthBar.Outline.Transparency = Transparency
+
+                            ESP.Drawing.HealthBar.Outline.Size = AntiAliasingXY(Thickness + 2, BoxSize.Y + (Thickness + 1))
+                            ESP.Drawing.HealthBar.Outline.Position = AntiAliasingXY(
+                                (ESP.Target.ScreenPosition.X - (BoxSize.X / 2)) - Thickness - ThicknessAdjust - 4,
+                                ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2) - ThicknessAdjust - 1
+                            )
+                            ESP.Drawing.HealthBar.Main.Size = V2New(ESP.Drawing.HealthBar.Outline.Size.X - 2, -HealthPercent * (ESP.Drawing.HealthBar.Outline.Size.Y - 2))
+                            ESP.Drawing.HealthBar.Main.Position = ESP.Drawing.HealthBar.Outline.Position + V2New(1, ESP.Drawing.HealthBar.Outline.Size.Y - 1)
+                        end
+
+                        if Textboxes.Name.Visible
+                        or Textboxes.Health.Visible
+                        or Textboxes.Distance.Visible
+                        or Textboxes.Weapon.Visible then
+                            local Size = GetFlag(ESP.Flags, ESP.Flag, "/Name/Size")
+                            local Autoscale = GetFlag(ESP.Flags, ESP.Flag, "/Name/Autoscale")
+                            --local Font = GetFont(GetFlag(ESP.ESP.Flags, ESP.ESP.Flag, "/Name/Font")[1])
+                            Autoscale = Floor(GetScaleFactor(Autoscale, Size, ESP.Target.Distance))
+
+                            Transparency = 1 - GetFlag(ESP.Flags, ESP.Flag, "/Name/Transparency")
+                            Outline = GetFlag(ESP.Flags, ESP.Flag, "/Name/Outline")
+
+                            if Textboxes.Name.Visible then
+                                Textboxes.Name.Outline = Outline
+                                --Textboxes.Name.Font = Font
+                                Textboxes.Name.Transparency = Transparency
+                                Textboxes.Name.Size = Autoscale
+                                Textboxes.Name.Text = ESP.Mode == "Player" and Target.Name
+                                or (InEnemyTeam and "Enemy NPC" or "Ally NPC")
+
+                                Textboxes.Name.Position = AntiAliasingXY(
+                                    ESP.Target.ScreenPosition.X,
+                                    ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2) - Textboxes.Name.TextBounds.Y - ThicknessAdjust - 2
+                                )
+                            end
+                            if Textboxes.Health.Visible then
+                                Textboxes.Health.Outline = Outline
+                                --Textboxes.Health.Font = Font
+                                Textboxes.Health.Transparency = Transparency
+                                Textboxes.Health.Size = Autoscale
+                                Textboxes.Health.Text = tostring(math.floor(HealthPercent * 100)) .. "%"
+
+                                local HealthPositionX = ESP.Drawing.HealthBar.Main.Visible and ((ESP.Target.ScreenPosition.X - (BoxSize.X / 2)) - Textboxes.Health.TextBounds.X - (Thickness + ThicknessAdjust + 5)) or ((ESP.Target.ScreenPosition.X - (BoxSize.X / 2)) - Textboxes.Health.TextBounds.X - ThicknessAdjust - 2)
+                                Textboxes.Health.Position = AntiAliasingXY(
+                                    HealthPositionX,
+                                    (ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2)) - ThicknessAdjust - 1
+                                )
+
+                                --ESP.Drawing.Test.Position = Textboxes.Health.Position
+                                --ESP.Drawing.Test.Size = V2New(Textboxes.Health.TextBounds.X, Textboxes.Health.TextBounds.Y)
+                            end
+                            if Textboxes.Distance.Visible then
+                                Textboxes.Distance.Outline = Outline
+                                --Textboxes.Distance.Font = Font
+                                Textboxes.Distance.Transparency = Transparency
+                                Textboxes.Distance.Size = Autoscale
+                                Textboxes.Distance.Text = tostring(math.floor(ESP.Target.Distance)) .. " studs"
+
+                                Textboxes.Distance.Position = AntiAliasingXY(
+                                    ESP.Target.ScreenPosition.X,
+                                    (ESP.Target.ScreenPosition.Y + (BoxSize.Y / 2)) + ThicknessAdjust + 2
+                                )
+
+                                --ESP.Drawing.Test.Position = Textboxes.Distance.Position
+                                --ESP.Drawing.Test.Size = V2New(Textboxes.Distance.TextBounds.X, Textboxes.Distance.TextBounds.Y)
+                            end
+                            if Textboxes.Weapon.Visible then
+                                local Weapon = GetWeapon(Target, Character, ESP.Mode)
+
+                                Textboxes.Weapon.Outline = Outline
+                                --Textboxes.Weapon.Font = Font
+                                Textboxes.Weapon.Transparency = Transparency
+                                Textboxes.Weapon.Size = Autoscale
+                                Textboxes.Weapon.Text = Weapon
+
+                                Textboxes.Weapon.Position = AntiAliasingXY(
+                                    (ESP.Target.ScreenPosition.X + (BoxSize.X / 2)) + ThicknessAdjust + 2,
+                                    ESP.Target.ScreenPosition.Y - (BoxSize.Y / 2) - ThicknessAdjust - 1
+                                )
+
+                                --ESP.Drawing.Test.Position = Textboxes.Weapon.Position
+                                --ESP.Drawing.Test.Size = V2New(Textboxes.Weapon.TextBounds.X, Textboxes.Weapon.TextBounds.Y)
+                            end
+                        end
+                    end
+                end
+            else
+                if ESP.Drawing.Arrow.Main.Visible then
+                    ESP.Target.Distance = GetDistance(ESP.Target.RootPart.Position)
+                    ESP.Target.InTheRange = IsWithinReach(GetFlag(ESP.Flags, ESP.Flag, "/DistanceCheck"), GetFlag(ESP.Flags, ESP.Flag, "/Distance"), ESP.Target.Distance)
+                    ESP.Target.Health, ESP.Target.MaxHealth, ESP.Target.IsAlive = GetHealth(Target, ESP.Target.Character, ESP.Mode)
+                    ESP.Target.InEnemyTeam, ESP.Target.TeamColor = GetTeam(Target, ESP.Target.Character, ESP.Mode)
+                    ESP.Target.Color = GetFlag(ESP.Flags, ESP.Flag, "/TeamColor") and ESP.Target.TeamColor
+                    or (ESP.Target.InEnemyTeam and GetFlag(ESP.Flags, ESP.Flag, "/Enemy")[6]
+                    or GetFlag(ESP.Flags, ESP.Flag, "/Ally")[6])
+
+                    local Direction = GetRelative(ESP.Target.RootPart.Position).Unit
+                    local SideLength = GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Width") / 2
+                    local ArrowRadius = GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Radius")
+                    local Base, Radians90 = Direction * ArrowRadius, Rad(90)
+
+                    local PointA = RelativeToCenter(Base + RotateVector(Direction, Radians90) * SideLength)
+                    local PointB = RelativeToCenter(Direction * (ArrowRadius + GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Height")))
+                    local PointC = RelativeToCenter(Base + RotateVector(Direction, -Radians90) * SideLength)
+
+                    local Filled = GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Filled")
+                    local Thickness = GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Thickness")
+                    local Transparency = 1 - GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Transparency")
+
+                    ESP.Drawing.Arrow.Main.Color = ESP.Target.Color
+
+                    ESP.Drawing.Arrow.Main.Filled = Filled
+
+                    ESP.Drawing.Arrow.Main.Thickness = Thickness
+                    ESP.Drawing.Arrow.Outline.Thickness = Thickness + 2
+
+                    ESP.Drawing.Arrow.Main.Transparency = Transparency
+                    ESP.Drawing.Arrow.Outline.Transparency = Transparency
+
+                    ESP.Drawing.Arrow.Main.PointA = PointA
+                    ESP.Drawing.Arrow.Outline.PointA = PointA
+                    ESP.Drawing.Arrow.Main.PointB = PointB
+                    ESP.Drawing.Arrow.Outline.PointB = PointB
+                    ESP.Drawing.Arrow.Main.PointC = PointC
+                    ESP.Drawing.Arrow.Outline.PointC = PointC
+                end
+            end
+        end
+
+        local TeamCheck = (not GetFlag(ESP.Flags, ESP.Flag, "/TeamCheck") and not ESP.Target.InEnemyTeam) or ESP.Target.InEnemyTeam
+        local Visible = ESP.Target.RootPart and ESP.Target.OnScreen and ESP.Target.InTheRange and ESP.Target.IsAlive and TeamCheck
+        local ArrowVisible = ESP.Target.RootPart and (not ESP.Target.OnScreen) and ESP.Target.InTheRange and ESP.Target.IsAlive and TeamCheck
+
+        -- if ESP.Highlight then
+        --     ESP.Highlight.Enabled = Visible and GetFlag(ESP.Flags, ESP.Flag, "/Highlight/Enabled") or false
+        -- end
+
+        ESP.Drawing.Box.Visible = Visible and GetFlag(ESP.Flags, ESP.Flag, "/Box/Enabled") or false
+        ESP.Drawing.Box.OutlineVisible = ESP.Drawing.Box.Visible and GetFlag(ESP.Flags, ESP.Flag, "/Box/Outline") or false
+
+        for Index, Line in pairs(ESP.Drawing.Box) do
+            if type(Line) ~= "table" then continue end
+            Line.Main.Visible = ESP.Drawing.Box.Visible
+            Line.Outline.Visible = ESP.Drawing.Box.OutlineVisible
+        end
+
+        ESP.Drawing.HealthBar.Main.Visible = ESP.Drawing.Box.Visible and GetFlag(ESP.Flags, ESP.Flag, "/Box/HealthBar") and not ESP.Target.BoxTooSmall or false
+        ESP.Drawing.HealthBar.Outline.Visible = ESP.Drawing.HealthBar.Main.Visible and GetFlag(ESP.Flags, ESP.Flag, "/Box/Outline") or false
+
+        ESP.Drawing.Arrow.Main.Visible = ArrowVisible and GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Enabled") or false
+        ESP.Drawing.Arrow.Outline.Visible = GetFlag(ESP.Flags, ESP.Flag, "/Arrow/Outline") and ESP.Drawing.Arrow.Main.Visible or false
+
+        ESP.Drawing.HeadDot.Main.Visible = Visible and GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/Enabled") or false
+        ESP.Drawing.HeadDot.Outline.Visible = GetFlag(ESP.Flags, ESP.Flag, "/HeadDot/Outline") and ESP.Drawing.HeadDot.Main.Visible or false
+
+        ESP.Drawing.Tracer.Main.Visible = Visible and GetFlag(ESP.Flags, ESP.Flag, "/Tracer/Enabled") or false
+        ESP.Drawing.Tracer.Outline.Visible = GetFlag(ESP.Flags, ESP.Flag, "/Tracer/Outline") and ESP.Drawing.Tracer.Main.Visible or false
+
+        ESP.Drawing.Textboxes.Name.Visible = ESP.Drawing.Box.Visible and GetFlag(ESP.Flags, ESP.Flag, "/Name/Enabled") or false
+        ESP.Drawing.Textboxes.Health.Visible = ESP.Drawing.Box.Visible and GetFlag(ESP.Flags, ESP.Flag, "/Health/Enabled") or false
+        ESP.Drawing.Textboxes.Distance.Visible = ESP.Drawing.Box.Visible and GetFlag(ESP.Flags, ESP.Flag, "/Distance/Enabled") or false
+        ESP.Drawing.Textboxes.Weapon.Visible = ESP.Drawing.Box.Visible and GetFlag(ESP.Flags, ESP.Flag, "/Weapon/Enabled") or false
+    end
+    debug.profileend()
+end)]]
+
+return DrawingLibrary
