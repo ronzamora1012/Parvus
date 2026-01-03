@@ -73,15 +73,14 @@ Drawing.Fonts = Drawing.Fonts or {
     Plex = 2
 }
 
--- Fallback for new Drawing objects (if executor lacks)
+-- Fallback for new Drawing objects
 local OldDrawingNew = Drawing.new
 Drawing.new = function(class, ...)
     local success, obj = pcall(function() return OldDrawingNew(class, ...) end)
     if success and obj then
         return obj
     end
-
-    -- return dummy object to avoid crashes
+    -- dummy object
     return setmetatable({
         Visible = false,
         Position = Vector2.new(),
@@ -94,11 +93,11 @@ Drawing.new = function(class, ...)
         Center = false,
         Thickness = 1,
         Filled = false,
-        TextBounds = Vector2.new(0, 0) -- add TextBounds for text objects
+        TextBounds = Vector2.new(0, 0)
     }, { __index = function() return function() end end })
 end
 
--- PATCH: ensure all text objects have safe TextBounds
+-- Ensure all text objects have safe TextBounds
 local old_Drawing_new2 = Drawing.new
 Drawing.new = function(class, ...)
     local obj = old_Drawing_new2(class, ...)
@@ -107,7 +106,6 @@ Drawing.new = function(class, ...)
     end
     return obj
 end
-
 
 
 local function AddDrawing(Type, Properties)
@@ -1900,5 +1898,6 @@ end)
 end)]]
 
 return DrawingLibrary
+
 
 
