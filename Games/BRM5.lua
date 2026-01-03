@@ -1,53 +1,25 @@
--- ===============================
--- PATCH: Minimal Parvus.UI stub
--- ===============================
+-- Minimal UI stub to prevent crashes
 Parvus = Parvus or {}
 Parvus.Utilities = Parvus.Utilities or {}
 Parvus.Utilities.UI = Parvus.Utilities.UI or {}
 
-function Parvus.Utilities.UI:Push(_) return end
+function Parvus.Utilities.UI:Push(_) end
 function Parvus.Utilities.UI:Window(_)
     return {
-        Tab = function(_)
+        Tab = function()
             return {
-                Section = function(_)
+                Section = function()
                     return {
-                        Toggle = function(_) return { Keybind = function() end } end,
-                        Slider = function(_) end,
-                        Dropdown = function(_) end,
-                        Colorpicker = function(_) end
+                        Toggle = function() return { Keybind = function() end } end,
+                        Slider = function() end,
+                        Dropdown = function() end,
+                        Colorpicker = function() end
                     }
                 end
             }
         end
     }
 end
-
-
--- Create minimal Parvus table so BRM5 won't crash
-Parvus = Parvus or {}
-Parvus.Utilities = Parvus.Utilities or {}
-Parvus.Utilities.UI = Parvus.Utilities.UI or {}
-
--- Stub the UI functions BRM5 uses
-function Parvus.Utilities.UI:Push(_) return end
-function Parvus.Utilities.UI:Window(_)
-    return {
-        Tab = function(_)
-            return {
-                Section = function(_)
-                    return {
-                        Toggle = function(_) return { Keybind = function() end } end,
-                        Slider = function(_) end,
-                        Dropdown = function(_) end,
-                        Colorpicker = function(_) end
-                    }
-                end
-            }
-        end
-    }
-end
-
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -1024,5 +996,6 @@ end)
 PlayerService.PlayerRemoving:Connect(function(Player)
     Parvus.Utilities.Drawing:RemoveESP(Player)
 end)
+
 
 
