@@ -52,6 +52,49 @@ local DrawingLibrary = {
     })
 }
 
+-- ===============================
+-- PATCH: Executor-proof Drawing functions
+-- ===============================
+
+-- TextBounds fallback
+Drawing.TextBounds = Drawing.TextBounds or function(text, size, font)
+    return Vector2.new(100, 20)
+end
+
+-- MeasureText fallback
+Drawing.MeasureText = Drawing.MeasureText or function(text, size, font)
+    return Vector2.new(100, 20)
+end
+
+-- Font table fallback
+Drawing.Fonts = Drawing.Fonts or {
+    UI = 0,
+    System = 1,
+    Plex = 2
+}
+
+-- Fallback for new Drawing objects (if executor lacks)
+local OldDrawingNew = Drawing.new
+Drawing.new = function(class)
+    local success, obj = pcall(function() return OldDrawingNew(class) end)
+    if success and obj then return obj end
+    -- return dummy object to avoid crashes
+    return setmetatable({
+        Visible = false,
+        Position = Vector2.new(),
+        Size = Vector2.new(),
+        Color = Color3.new(),
+        Transparency = 1,
+        Text = "",
+        Font = 0,
+        Outline = false,
+        Center = false,
+        Thickness = 1,
+        Filled = false
+    }, {__index = function() return function() end end})
+end
+
+
 local function AddDrawing(Type, Properties)
     local DrawingObject = Drawing.new(Type)
 
@@ -1842,3 +1885,4 @@ end)
 end)]]
 
 return DrawingLibrary
+
